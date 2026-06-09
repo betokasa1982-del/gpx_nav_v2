@@ -1,0 +1,15 @@
+{
+  "name": "GPX Navigator Pro",
+  "short_name": "GPX Nav",
+  "description": "GPX route navigation with stop detection, timers and photo stops",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d1117",
+  "theme_color": "#f0a500",
+  "categories": ["navigation", "utilities"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

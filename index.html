@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0d1117">
+  <title>GPX Navigator Pro</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon-192.png">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- ── Top bar ──────────────────────────────────────────────────────────── -->
+<div class="topbar" id="topbar">
+  <div class="topbar-logo">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    <span>GPX</span>
+  </div>
+  <div class="topbar-stats">
+    <div class="ts-item"><div class="ts-lbl">ROUTE</div><div class="ts-val" id="h-dist">—</div></div>
+    <div class="ts-item"><div class="ts-lbl">STOPS</div><div class="ts-val" id="h-stops">0/0</div></div>
+    <div class="ts-item"><div class="ts-lbl">PLANNED</div><div class="ts-val accent" id="h-prog">—</div></div>
+    <div class="ts-item"><div class="ts-lbl">ACTUAL</div><div class="ts-val green" id="h-real">00:00:00</div></div>
+  </div>
+  <div class="topbar-actions">
+    <label class="btn" title="Open GPX or JSON file">
+      📂 <input type="file" id="file-input" accept=".gpx,.json" style="display:none"
+           onchange="App.handleFile(this)">
+    </label>
+    <button id="map-style-btn" class="btn" onclick="App.toggleMapStyle()" title="Day/Night map">🌙</button>
+    <button id="btn-rec"      class="btn rec"   onclick="App.startRec()">⏺ Rec</button>
+    <button id="btn-stop-rec" class="btn rec"   onclick="App.stopRec()"  style="display:none">⏹ Stop</button>
+    <button id="btn-nav"      class="btn go"    onclick="App.startNav()" disabled>▶ Nav</button>
+    <button id="btn-stop-nav" class="btn go"    onclick="App.stopNav()"  style="display:none">■ Nav</button>
+  </div>
+</div>
+
+<!-- ── Summary bar (visible during nav) ─────────────────────────────────── -->
+<div class="sum-bar" id="sum-bar">
+  <div class="sb-cols">
+    <div class="sb-item"><span class="sb-lbl">Done</span><span class="sb-val ok" id="sb-done">0/0</span></div>
+    <div class="sb-div"></div>
+    <div class="sb-item"><span class="sb-lbl">Planned</span><span class="sb-val" id="sb-prog">—</span></div>
+    <div class="sb-div"></div>
+    <div class="sb-prog">
+      <div class="sb-prog-row"><span id="sb-rlbl">Actual: 0</span><span id="sb-dlbl" style="color:var(--green)">—</span></div>
+      <div class="sb-pbar"><div class="sb-pfill" id="sb-fill" style="width:0%"></div></div>
+    </div>
+    <div class="sb-div"></div>
+    <div class="sb-item"><span class="sb-lbl">Delta</span><span class="sb-val ok" id="sb-delta">—</span></div>
+  </div>
+</div>
+
+<!-- ── Map ───────────────────────────────────────────────────────────────── -->
+<div class="map-wrap" id="map-wrap">
+  <div id="map"></div>
+
+  <!-- Nav HUD -->
+  <div class="nav-hud" id="nav-hud">
+    <!-- Instruction bar -->
+    <div class="hud-instr" id="hud-instr">
+      <div class="hud-instr-icon">
+        <div id="hud-icon">—</div>
+        <div class="hud-icon-lbl" id="hud-icon-lbl">WAIT</div>
+      </div>
+      <div class="hud-instr-body">
+        <div class="hud-instr-dist far" id="hud-dist">—</div>
+        <div class="hud-instr-action"   id="hud-action">Open a GPX file</div>
+        <div class="hud-instr-detail"   id="hud-detail"></div>
+      </div>
+      <div class="hud-instr-speed">
+        <div class="hud-spd-val" id="hud-spd">—</div>
+        <div class="hud-spd-unit">km/h</div>
+      </div>
+    </div>
+
+    <!-- GPS status -->
+    <div class="gps-status" id="gps-status">
+      <span class="gps-dot idle" id="gps-dot"></span>
+      <span class="gps-msg"      id="gps-msg">GPS idle</span>
+    </div>
+
+    <!-- Voice button -->
+    <button class="voice-btn" id="voice-btn" onclick="App.toggleVoice()" title="Toggle voice">🔊</button>
+
+    <!-- Stops panel (floating) -->
+    <div class="hud-stops-panel" id="hud-stops-panel">
+      <div class="hud-sp-head">
+        <span>ROUTE STOPS</span>
+        <span id="stops-badge"></span>
+      </div>
+      <div id="hud-sp-list" style="overflow-y:auto;flex:1"></div>
+    </div>
+
+    <!-- Recording indicator -->
+    <div class="rec-indicator" id="rec-indicator" style="display:none">
+      <span class="rec-dot">●</span>
+      <span id="rec-sc">Recording...</span>
+    </div>
+
+    <!-- Stop photo corner overlay -->
+    <div class="stop-photo-ov" id="stop-photo-ov">
+      <div class="stop-photo-header">
+        <span class="stop-photo-name" id="spo-name">Stop</span>
+        <span class="stop-photo-close" onclick="App.hidePhotoOverlay?.() || document.getElementById('stop-photo-ov').classList.remove('on')">✕</span>
+      </div>
+      <div class="stop-photo-badge-wrap"><span id="spo-badge"></span></div>
+      <img class="stop-photo-img" id="spo-img" alt="stop" style="display:none">
+    </div>
+
+    <!-- Alert overlay -->
+    <div class="alert-ov" id="alert-ov" style="display:none">
+      <div class="alert-msg" id="alert-msg"></div>
+    </div>
+
+    <!-- Bottom strip: progress bar -->
+    <div class="hud-strip">
+      <div class="hs-bar"><div class="hs-fill" id="hs-fill" style="width:0%"></div></div>
+      <div class="hs-label" id="hs-label">No route</div>
+    </div>
+
+    <!-- Toggle stops panel button -->
+    <button class="hud-toggle" id="hud-toggle" onclick="App.toggleHudPanel()">📍 Stops</button>
+  </div><!-- /nav-hud -->
+</div><!-- /map-wrap -->
+
+<!-- ── Bottom sheet ──────────────────────────────────────────────────────── -->
+<div class="sheet" id="sheet">
+  <div class="sheet-handle" onclick="App.toggleSheet?.()"></div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" id="tab-route" onclick="App.switchTab('route')">🛤️ Route</button>
+    <button class="tab"        id="tab-gps"   onclick="App.switchTab('gps')">📡 GPS</button>
+    <button class="tab"        id="tab-stops" onclick="App.switchTab('stops')">
+      📍 Stops<span id="stops-badge2"></span>
+    </button>
+    <button class="tab"        id="tab-recs"  onclick="App.switchTab('recs')">
+      🗂 Saved<span id="rec-badge"></span>
+    </button>
+  </div>
+
+  <!-- Route pane -->
+  <div class="tab-pane on" id="pane-route">
+    <div class="pane-inner">
+      <div class="empty" id="no-route">
+        <div class="empty-icon">🗺️</div>
+        <div class="empty-title">No route loaded</div>
+        <div class="empty-sub">Tap 📂 to open a GPX file, or ⏺ Rec to record a new route</div>
+      </div>
+      <div id="route-details" style="display:none;flex-direction:column;gap:10px">
+        <div class="route-info">
+          <div class="ri-row"><span class="ri-lbl">File</span><span class="ri-val" id="ri-file">—</span></div>
+          <div class="ri-row"><span class="ri-lbl">Distance</span><span class="ri-val" id="ri-dist">—</span></div>
+          <div class="ri-row"><span class="ri-lbl">Stops</span><span class="ri-val" id="ri-stops">—</span></div>
+          <div class="ri-row"><span class="ri-lbl">Maneuvers</span><span class="ri-val" id="ri-man">—</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GPS pane -->
+  <div class="tab-pane" id="pane-gps">
+    <div class="pane-inner">
+      <div class="settings-group">
+        <div class="sg-title">Navigation</div>
+        <div class="sg-row"><label>Arrival radius (m)</label>
+          <input type="range" min="30" max="200" value="80" id="rng-radius"
+            oninput="document.getElementById('val-radius').textContent=this.value+'m'">
+          <span id="val-radius">80m</span></div>
+        <div class="sg-row"><label>Auto-start timer</label>
+          <input type="range" min="0" max="1" value="1" id="rng-auto"
+            oninput="document.getElementById('val-auto').textContent=this.value==='1'?'Yes':'No'">
+          <span id="val-auto">Yes</span></div>
+        <div class="sg-row"><label>Auto-stop timer</label>
+          <input type="range" min="0" max="1" value="1" id="rng-autostop"
+            oninput="document.getElementById('val-autostop').textContent=this.value==='1'?'Yes':'No'">
+          <span id="val-autostop">Yes</span></div>
+        <div class="sg-row"><label>Follow position</label>
+          <input type="range" min="0" max="1" value="1" id="rng-follow"
+            oninput="document.getElementById('val-follow').textContent=this.value==='1'?'Yes':'No'">
+          <span id="val-follow">Yes</span></div>
+        <div class="sg-row"><label>Zoom level</label>
+          <input type="range" min="13" max="20" value="17" id="rng-zoom"
+            oninput="document.getElementById('val-zoom').textContent=this.value">
+          <span id="val-zoom">17</span></div>
+      </div>
+      <div class="settings-group">
+        <div class="sg-title">Recording — stop detection</div>
+        <div class="sg-row"><label>Stop speed (km/h)</label>
+          <input type="range" min="1" max="20" value="5" id="rng-recspd"
+            oninput="document.getElementById('val-recspd').textContent=this.value+'km/h'">
+          <span id="val-recspd">5km/h</span></div>
+        <div class="sg-row"><label>Min stop duration (s)</label>
+          <input type="range" min="3" max="60" value="5" id="rng-recdur"
+            oninput="document.getElementById('val-recdur').textContent=this.value+'s'">
+          <span id="val-recdur">5s</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stops pane -->
+  <div class="tab-pane" id="pane-stops">
+    <div class="pane-inner">
+      <div class="empty" id="stops-empty">No stops loaded</div>
+      <div class="stops-list" id="stops-list"></div>
+    </div>
+  </div>
+
+  <!-- Recordings pane -->
+  <div class="tab-pane" id="pane-recs">
+    <div class="pane-inner">
+      <div class="pane-actions">
+        <label class="btn small">📥 Import JSON
+          <input type="file" accept=".json" style="display:none" onchange="App.handleFile(this)">
+        </label>
+        <button class="btn small" onclick="App.exportAllJSON()">📤 Export All</button>
+      </div>
+      <div class="empty" id="rec-empty">No saved recordings yet.<br>Tap ⏺ Rec to record a route.</div>
+      <div id="rec-list"></div>
+    </div>
+  </div>
+
+</div><!-- /sheet -->
+
+<!-- ── Camera prompt (recording stop detected) ───────────────────────────── -->
+<div class="cam-prompt" id="cam-prompt">
+  <div class="cam-prompt-title">📍 Stop <span id="cam-stop-num">1</span> detected</div>
+  <div class="cam-events-title">Events at this stop</div>
+  <div class="cam-events-row">
+    <button class="evt-btn" id="evt-door"  onclick="App.toggleStopEvent('openDoor')">🚪<br>Open Door</button>
+    <button class="evt-btn" id="evt-knee"  onclick="App.toggleStopEvent('kneeling')">♿<br>Kneeling</button>
+  </div>
+  <div class="cam-divider"></div>
+  <div class="cam-prompt-sub">Take a photo so the driver recognises this stop</div>
+  <div class="cam-prompt-btns">
+    <button class="btn primary" onclick="App.openCamera()">📷 Photo</button>
+    <button class="btn go"      onclick="App.confirmStop()">✓ Done</button>
+  </div>
+</div>
+
+<!-- Hidden file inputs -->
+<input type="file" id="cam-input" accept="image/*" capture="environment"
+       style="display:none" onchange="App.handleCameraFile(this)">
+
+<!-- ── Scripts ───────────────────────────────────────────────────────────── -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script type="module" src="js/app.js"></script>
+
+<script>
+  // Service Worker registration
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js')
+      .then(r => console.log('[SW] Registered', r.scope))
+      .catch(e => console.warn('[SW] Failed:', e));
+  }
+</script>
+</body>
+</html>
