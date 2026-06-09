@@ -1410,7 +1410,8 @@ function onGPS(pos){
   // Speed: prefer GPS value, fallback to distance-based calculation
   const calcSpd=calcSpeedFromPoints(lat,lng);
     const rawSpd=speed!=null?speed*3.6:calcSpeedFromPoints(lat,lng,pos.timestamp);
-  const spdKmh=smoothSpeed(rawSpd);
+  const spdKmh=smoothSpeed(rawSpd);  // smoothed — for display
+  const rawKmh=rawSpd!=null?rawSpd:0; // raw — for stop detection
   lastGPSForSpeed={lat,lng,t:Date.now()};
   el('hud-spd').textContent=spdKmh!=null?Math.round(spdKmh):'—';
   setGPS('active',`Prec: ${accuracy?.toFixed(0)||'?'} m`);
@@ -1468,7 +1469,7 @@ function onGPS(pos){
     const velThreshold=+el('rng-recvel').value;
     const durThreshold=+el('rng-recdur').value;
     // spdKmh=null means GPS didn't report speed — assume 0 (stopped)
-    const velKmh=spdKmh!=null?spdKmh:0;
+    const velKmh=rawKmh; // use raw (unsmoothed) speed for stop detection
 
     if(velKmh<velThreshold){
       if(!recStopCandidate){
@@ -1663,7 +1664,7 @@ function checkArrival(lat,lng){
   // ── Arrival / departure checks ────────────────────────────
   // Speed-aware arrival radius: when slowing down near stop, expand detection zone
   const effectiveRadius=Math.max(radius,
-    (currentPos&&spdKmh!=null&&spdKmh<20)?radius*1.8:radius
+    (rawKmh!=null&&rawKmh<20)?radius*1.8:radius
   );
 
   stops.forEach(s=>{
