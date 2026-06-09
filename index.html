@@ -1,54 +1,434 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#0d1117">
-  <title>GPX Navigator Pro</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="icon-192.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d1117">
+<title>GPX Navigator Pro</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2128;--border:#30363d;
+  --accent:#f0a500;--green:#3fb950;--red:#f85149;--blue:#58a6ff;
+  --text:#e6edf3;--muted:#8b949e;
+  --mono:'Share Tech Mono',monospace;--sans:'Rajdhani',sans-serif;
+  --safe-b:env(safe-area-inset-bottom,0px);--safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;touch-action:manipulation}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex;flex-direction:column;height:100dvh}
 
-  <!-- Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+/* ── TOPBAR ── */
+.topbar{display:flex;align-items:center;gap:6px;padding:calc(7px + var(--safe-t)) 10px 7px;
+  background:var(--panel);border-bottom:1px solid var(--border);z-index:3000;flex-shrink:0;min-height:52px}
+.logo{font-size:16px;font-weight:700;letter-spacing:2px;color:var(--accent);display:flex;align-items:center;gap:4px;flex-shrink:0}
+.top-stats{display:flex;gap:8px;flex:1;overflow:hidden;align-items:center}
+.tstat{display:flex;flex-direction:column;min-width:0}
+.tstat-l{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-family:var(--mono)}
+.tstat-v{font-size:14px;font-weight:700;font-family:var(--mono);white-space:nowrap}
+.tstat-v.ok{color:var(--green)}.tstat-v.warn{color:var(--accent)}.tstat-v.over{color:var(--red)}
+.tdiv{width:1px;height:24px;background:var(--border);flex-shrink:0}
+.top-actions{display:flex;gap:5px;flex-shrink:0}
+.btn{display:flex;align-items:center;justify-content:center;gap:4px;padding:7px 11px;
+  border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);
+  font-family:var(--sans);font-size:12px;font-weight:700;letter-spacing:1px;cursor:pointer;
+  text-transform:uppercase;min-height:38px;white-space:nowrap;user-select:none}
+.btn:active{opacity:.65}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#000}
+.btn.go{background:var(--green);border-color:var(--green);color:#000}
+.btn.stop-nav{background:var(--red);border-color:var(--red);color:#fff}
+.btn.rec{background:rgba(248,81,73,.15);border-color:var(--red);color:var(--red)}
+.btn.rec-on{background:var(--red);border-color:var(--red);color:#fff;animation:recPulse 1.5s infinite}
+@keyframes recPulse{50%{opacity:.6}}
+.btn:disabled{opacity:.28;pointer-events:none}
 
-  <!-- Leaflet -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+/* ── SUMMARY BAR ── */
+.sum-bar{display:none;flex-shrink:0;background:var(--panel2);border-bottom:1px solid var(--border);padding:5px 12px}
+.sum-bar.on{display:flex}
+.sb-cols{display:flex;width:100%;align-items:center;gap:10px}
+.sb-item{display:flex;flex-direction:column;align-items:center;flex:1}
+.sb-lbl{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-family:var(--mono)}
+.sb-val{font-size:15px;font-weight:700;font-family:var(--mono)}
+.sb-val.ok{color:var(--green)}.sb-val.warn{color:var(--accent)}.sb-val.over{color:var(--red)}
+.sb-div{width:1px;height:28px;background:var(--border);flex-shrink:0}
+.sb-prog{flex:2;display:flex;flex-direction:column;gap:3px}
+.sb-prog-row{display:flex;justify-content:space-between;font-size:9px;font-family:var(--mono);color:var(--muted)}
+.sb-pbar{height:5px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden}
+.sb-pfill{height:100%;border-radius:3px;transition:width .5s,background .5s}
 
-  <!-- App CSS -->
-  <link rel="stylesheet" href="css/app.css">
+/* ── MAP ── */
+.map-wrap{position:relative;flex:1;min-height:0;overflow:hidden}
+/* Map is larger than viewport so rotated corners stay filled with tiles */
+#map{width:100%;height:100%;background:#1a1f2e}
+.leaflet-map-pane{transition:transform 0.35s linear!important}
+
+/* ════════════════════════════════════════
+   NAV HUD — Waze-style overlay
+════════════════════════════════════════ */
+.nav-hud{position:absolute;inset:0;pointer-events:none;display:none;z-index:900}
+.nav-hud.on{display:block}
+
+/* ── INSTRUCTION CARD (top, full-width strip like Waze) ── */
+.hud-instr{
+  position:absolute;top:0;left:0;right:0;pointer-events:auto;
+  background:rgba(13,17,23,.96);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:0;
+  backdrop-filter:blur(10px);
+}
+/* Arrow box */
+/* ── HUD instruction bar — compact for tablet ── */
+.hud-instr-icon{
+  width:82px;flex-shrink:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-size:52px;padding:8px 6px;gap:2px;
+  border-right:1px solid var(--border);transition:all .4s;
+}
+.hud-icon-lbl{font-size:8px;letter-spacing:1px;text-transform:uppercase;
+  font-family:var(--mono);color:var(--muted);text-align:center;line-height:1}
+.hud-instr-body{flex:1;padding:6px 12px;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.hud-instr-dist{font-size:28px;font-weight:700;font-family:var(--mono);line-height:1;transition:color .4s}
+.hud-instr-dist.far   {color:var(--blue)}
+.hud-instr-dist.medium{color:var(--accent)}
+.hud-instr-dist.close {color:var(--red);animation:urgentPulse .8s infinite}
+@keyframes urgentPulse{50%{opacity:.4}}
+.hud-instr-action{font-size:17px;font-weight:700;color:var(--text);margin:2px 0}
+.hud-instr-detail{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.hud-next-preview{font-size:10px;color:rgba(139,148,158,.7);font-family:var(--mono);
+  margin-top:3px;padding:2px 6px;background:rgba(255,255,255,.05);
+  border-radius:4px;display:none}
+.hud-next-preview.visible{display:block}
+.hud-instr-speed{
+  width:62px;flex-shrink:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  border-left:1px solid var(--border);padding:8px 4px;
+}
+.hud-spd-val{font-size:26px;font-weight:700;font-family:var(--mono);line-height:1}
+.hud-spd-unit{font-size:9px;color:var(--muted);font-family:var(--mono);letter-spacing:1px}
+
+/* Instruction colors by type */
+.hud-instr-icon.stop   {background:rgba(248,81,73,.15);border-right-color:rgba(248,81,73,.3)}
+.hud-instr-icon.arrive {background:rgba(63,185,80,.12);border-right-color:rgba(63,185,80,.3)}
+.hud-instr-icon.turn   {background:rgba(240,165,0,.12);border-right-color:rgba(240,165,0,.3)}
+.hud-instr-icon.straight{background:transparent}
+
+/* ── COMPASS (right side of map, below instruction) ── */
+.hud-compass{
+  position:absolute;right:12px;top:100px;pointer-events:auto;
+  background:rgba(13,17,23,.9);border:1px solid var(--border);border-radius:50%;
+  width:60px;height:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  backdrop-filter:blur(8px);
+}
+.hud-compass-arrow{font-size:26px;transition:transform .3s}
+.hud-compass-deg{font-size:10px;font-family:var(--mono);color:var(--muted)}
+
+/* ── ROUTE PROGRESS (bottom strip) ── */
+.hud-strip{
+  position:absolute;bottom:58px;left:8px;right:8px;pointer-events:auto;
+  background:rgba(13,17,23,.85);border:1px solid var(--border);border-radius:8px;
+  padding:6px 12px;display:flex;align-items:center;gap:10px;backdrop-filter:blur(8px);
+}
+.hud-sbar{flex:1;height:5px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden}
+.hud-sfill{height:100%;background:linear-gradient(90deg,var(--green),var(--accent));border-radius:3px;transition:width .5s}
+.hud-slbl{font-size:11px;font-family:var(--mono);color:var(--muted);white-space:nowrap}
+
+/* Toggle stops panel */
+.hud-toggle{position:absolute;bottom:10px;right:10px;z-index:910;pointer-events:auto;
+  background:rgba(13,17,23,.9);border:1px solid var(--border);border-radius:10px;
+  padding:8px 14px;font-family:var(--sans);font-size:12px;font-weight:700;cursor:pointer;
+  color:var(--accent);letter-spacing:1px;backdrop-filter:blur(8px);display:none}
+.hud-toggle.on{display:block}
+
+/* Floating stops panel — compact, max 40% screen height */
+.hud-stops-panel{
+  position:absolute;bottom:56px;left:8px;right:8px;z-index:910;pointer-events:auto;
+  background:rgba(13,17,23,.96);border:1px solid var(--border);border-radius:12px;
+  display:none;flex-direction:column;
+  max-height:40vh;   /* never more than 40% of screen */
+  overflow:hidden;backdrop-filter:blur(12px);
+  box-shadow:0 -4px 24px rgba(0,0,0,.5);
+}
+.hud-stops-panel.on{display:flex}
+.hud-sp-head{padding:7px 12px;border-bottom:1px solid var(--border);font-size:10px;
+  font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);
+  display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+
+/* Compact stop row in floating panel */
+.hud-stop-row{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 12px;border-bottom:1px solid rgba(48,54,61,.4);
+  min-height:0;
+}
+.hud-stop-row:last-child{border-bottom:none}
+.hud-stop-row.current{background:rgba(63,185,80,.06)}
+.hud-stop-row.done{opacity:.35}
+.hud-sr-num{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:11px;font-weight:700;font-family:var(--mono);flex-shrink:0}
+.hud-sr-num.waiting{background:var(--accent);color:#000}
+.hud-sr-num.current{background:var(--green);color:#000;animation:blink 1.2s infinite}
+.hud-sr-num.done{background:var(--muted);color:#000}
+.hud-sr-name{flex:1;font-size:13px;font-weight:700;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.hud-sr-timer{font-size:13px;font-family:var(--mono);color:var(--text);
+  white-space:nowrap;flex-shrink:0}
+.hud-sr-timer.running{color:var(--green)}
+.hud-sr-timer.over{color:var(--red)}
+.hud-sr-done-btn{
+  background:var(--green);color:#000;border:none;border-radius:6px;
+  font-size:11px;font-weight:700;padding:5px 8px;cursor:pointer;
+  flex-shrink:0;white-space:nowrap;font-family:var(--sans);
+}
+.hud-sr-done-btn:active{opacity:.7}
+
+/* ── RECORDING INDICATOR ── */
+.rec-ind{
+  position:absolute;bottom:165px;left:12px;z-index:910;pointer-events:auto;
+  background:rgba(90,0,0,.95);border:1px solid var(--red);border-radius:10px;
+  padding:8px 12px;display:none;align-items:center;gap:8px;backdrop-filter:blur(8px);
+}
+.rec-ind.on{display:flex}
+.rec-dot{width:10px;height:10px;border-radius:50%;background:var(--red);animation:blink 1s infinite;flex-shrink:0}
+
+/* ── Photo feature ── */
+/* Camera + events prompt */
+.cam-prompt{
+  position:absolute;bottom:170px;left:50%;transform:translateX(-50%);z-index:1600;
+  background:var(--panel);border:2px solid var(--accent);border-radius:14px;
+  padding:14px 18px;display:none;flex-direction:column;align-items:center;gap:8px;
+  box-shadow:0 6px 30px rgba(0,0,0,.7);min-width:280px;max-width:340px;
+  backdrop-filter:blur(8px);animation:popIn .3s ease;
+}
+.cam-prompt.on{display:flex}
+.cam-prompt-title{font-size:15px;font-weight:700;color:var(--accent);text-align:center}
+.cam-prompt-sub{font-size:11px;color:var(--muted);text-align:center;font-family:var(--mono)}
+.cam-prompt-btns{display:flex;gap:8px;width:100%}
+/* Events section */
+.cam-events-title{font-size:10px;letter-spacing:2px;text-transform:uppercase;
+  color:var(--muted);font-family:var(--mono);align-self:flex-start}
+.cam-events-row{display:flex;gap:8px;width:100%}
+.evt-btn{flex:1;padding:10px 8px;border-radius:8px;border:2px solid var(--border);
+  background:transparent;color:var(--text);font-family:var(--sans);font-size:13px;
+  font-weight:700;cursor:pointer;text-align:center;transition:all .15s;user-select:none}
+.evt-btn:active{transform:scale(.95)}
+.evt-btn.active{border-color:var(--green);background:rgba(63,185,80,.15);color:var(--green)}
+.cam-divider{width:100%;height:1px;background:var(--border)}
+/* Event badges on stop markers/cards */
+.stop-event-badge{display:inline-flex;align-items:center;gap:3px;
+  font-size:10px;font-family:var(--mono);padding:2px 6px;border-radius:8px;
+  background:rgba(88,166,255,.12);color:var(--blue);margin-left:4px}
+
+/* Stop photo overlay (shown when approaching a stop) */
+.stop-photo-ov{
+  position:absolute;
+  top:90px;right:12px;       /* top-right corner, below HUD bar */
+  width:190px;               /* compact 190px */
+  z-index:1400;
+  display:none;flex-direction:column;
+  border-radius:10px;overflow:hidden;
+  box-shadow:0 4px 20px rgba(0,0,0,.75);
+  border:1px solid var(--border);
+  animation:fadeIn .3s ease;
+}
+.stop-photo-ov.on{display:flex}
+.stop-photo-header{
+  background:rgba(13,17,23,.96);padding:5px 8px;
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+}
+.stop-photo-name{font-size:12px;font-weight:700;color:var(--accent);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+.stop-photo-close{font-size:16px;cursor:pointer;color:var(--muted);padding:0 2px;flex-shrink:0}
+.stop-photo-img{width:190px;height:130px;object-fit:cover;display:block}
+.stop-photo-none{background:rgba(13,17,23,.9);padding:14px;text-align:center;
+  color:var(--muted);font-size:11px;font-family:var(--mono);height:80px;
+  display:flex;align-items:center;justify-content:center}
+
+/* Photo thumbnail in stop card */
+.sc-photo{width:100%;height:90px;object-fit:cover;display:block;
+  border-radius:0 0 8px 8px;cursor:pointer}
+.sc-no-photo{display:none}
+.rec-label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--red);font-family:var(--mono)}
+.rec-stats{font-size:12px;font-family:var(--mono);color:var(--text)}
+.rec-stops-count{font-size:10px;font-family:var(--mono);color:var(--accent)}
+
+/* ── ARRIVING ALERT ── */
+.arriving{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1500;
+  padding:14px 22px;border-radius:12px;font-size:17px;font-weight:700;letter-spacing:1px;
+  display:none;animation:popIn .3s ease;text-align:center}
+.arriving.arrived {background:var(--green);color:#000;box-shadow:0 6px 30px rgba(63,185,80,.5)}
+.arriving.departed{background:var(--blue);color:#000;box-shadow:0 6px 30px rgba(88,166,255,.4)}
+.arriving.stop-alert{background:var(--red);color:#fff;box-shadow:0 6px 30px rgba(248,81,73,.5)}
+@keyframes popIn{from{transform:translate(-50%,-50%) scale(.7);opacity:0}}
+@keyframes blink{50%{opacity:.15}}
+
+/* ── INSTALL BANNER ── */
+.install-banner{position:absolute;bottom:115px;left:12px;right:12px;z-index:1800;
+  background:var(--panel2);border:1px solid var(--accent);border-radius:12px;
+  padding:12px 16px;display:none;flex-direction:column;gap:8px}
+.install-btns{display:flex;gap:8px}
+
+/* ── BOTTOM SHEET ── */
+.sheet{position:absolute;bottom:0;left:0;right:0;
+  background:var(--panel);border-radius:18px 18px 0 0;border-top:1px solid var(--border);
+  z-index:1000;display:flex;flex-direction:column;max-height:72vh;
+  transition:transform .35s cubic-bezier(.32,.72,0,1);
+  transform:translateY(calc(100% - 96px));padding-bottom:var(--safe-b)}
+.sheet.expanded{transform:translateY(0)}
+.sheet.mid{transform:translateY(calc(100% - 280px))}
+.sheet.hidden{transform:translateY(calc(100% - 52px))}
+.sheet-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:10px auto 0;flex-shrink:0;cursor:pointer}
+.peek{display:flex;align-items:center;gap:10px;padding:8px 14px 6px;cursor:pointer;flex-shrink:0;user-select:none}
+.peek-left{flex:1;min-width:0}
+.peek-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.peek-sub{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.peek-dist{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--accent)}
+
+/* Tabs */
+.sheet-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.stab{flex:1;padding:10px 2px;text-align:center;font-size:10px;font-weight:700;letter-spacing:1.2px;
+  text-transform:uppercase;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;user-select:none}
+.stab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* Panes */
+.pane{display:none;flex-direction:column;overflow:hidden;flex:1}
+.pane.active{display:flex}
+
+/* Upload */
+.upload-zone{margin:14px;border:2px dashed var(--border);border-radius:10px;padding:22px 14px;
+  text-align:center;cursor:pointer;position:relative;display:flex;flex-direction:column;align-items:center;gap:5px}
+.upload-zone:active{border-color:var(--accent);background:rgba(240,165,0,.05)}
+.upload-zone input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
+.upload-zone .icon{font-size:28px}
+.upload-zone strong{color:var(--accent);font-size:15px}
+.upload-zone p{font-size:11px;color:var(--muted)}
+
+/* Route info */
+.route-info{margin:0 14px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px}
+.ri-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ri-item .ril{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-family:var(--mono)}
+.ri-item .riv{font-size:15px;font-weight:700;font-family:var(--mono)}
+
+/* GPS settings */
+.nav-section{padding:12px 14px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.nav-field{display:flex;align-items:center;gap:8px}
+.nav-field label{font-size:11px;color:var(--muted);width:145px;flex-shrink:0;font-family:var(--mono)}
+.nav-field input[type=range]{flex:1;accent-color:var(--accent)}
+.nav-field .val{font-size:11px;font-family:var(--mono);color:var(--accent);width:55px;text-align:right}
+.gps-status{padding:10px 14px;border-radius:8px;border:1px solid var(--border);
+  font-size:12px;font-family:var(--mono);display:flex;align-items:center;gap:10px;background:var(--bg)}
+.gps-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.gps-dot.wait  {background:var(--muted)}
+.gps-dot.active{background:var(--green);animation:blink 1.2s infinite}
+.gps-dot.error {background:var(--red)}
+
+/* Stop cards */
+.stops-list{flex:1;overflow-y:auto;padding:8px 12px 12px;display:flex;flex-direction:column;gap:7px;-webkit-overflow-scrolling:touch}
+.stop-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;overflow:hidden;animation:fadeUp .2s ease;transition:border-color .2s,opacity .2s}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}}
+.stop-card.state-current{border-color:var(--green);box-shadow:0 0 0 1px rgba(63,185,80,.12)}
+.stop-card.state-done{opacity:.4}
+.stop-card.state-over{border-color:var(--red)}
+.sc-head{display:flex;align-items:center;gap:8px;padding:10px 12px 7px}
+.sc-num{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;font-family:var(--mono);flex-shrink:0}
+.sc-num.waiting{background:var(--accent);color:#000}
+.sc-num.current{background:var(--green);color:#000;animation:blink 1.2s infinite}
+.sc-num.done   {background:var(--muted);color:#000}
+.sc-name{flex:1;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-badge{font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:10px;flex-shrink:0}
+.sc-badge.waiting{background:rgba(240,165,0,.1);color:var(--accent)}
+.sc-badge.current{background:rgba(63,185,80,.15);color:var(--green)}
+.sc-badge.done   {background:rgba(139,148,158,.12);color:var(--muted)}
+.sc-times{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);margin:0 12px 7px;border-radius:8px;overflow:hidden}
+.sc-time-col{background:var(--panel2);padding:8px 12px}
+.sc-time-col.real{background:var(--panel)}
+.sc-time-label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-family:var(--mono)}
+.sc-time-val{font-size:20px;font-weight:700;font-family:var(--mono);letter-spacing:1px;color:var(--text);margin-top:1px}
+.sc-time-val.running{color:var(--green)}.sc-time-val.paused{color:var(--accent)}.sc-time-val.over{color:var(--red)}
+.sc-delta{font-size:10px;font-family:var(--mono);margin-top:2px}
+.sc-delta.ok{color:var(--green)}.sc-delta.warn{color:var(--accent)}.sc-delta.over{color:var(--red)}
+.sc-prog{margin:0 12px 6px}
+.sc-prog-bg{height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
+.sc-prog-fill{height:100%;border-radius:3px;transition:width .5s,background .5s;min-width:2px}
+.sc-ctrl{display:flex;align-items:center;gap:7px;padding:0 12px 10px}
+.tbtn{width:36px;height:36px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;flex-shrink:0}
+.tbtn:active{transform:scale(.88)}
+.tbtn.go {background:rgba(63,185,80,.15);color:var(--green)}
+.tbtn.ps {background:rgba(240,165,0,.15);color:var(--accent)}
+.tbtn.rst{background:rgba(248,81,73,.08);color:var(--muted)}
+.sc-btns{display:flex;gap:5px;flex:1;justify-content:flex-end}
+.sc-btn{font-size:11px;padding:6px 8px;min-height:32px;border-radius:5px;cursor:pointer;
+  border:1px solid var(--border);background:transparent;color:var(--muted);font-family:var(--sans);
+  font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.sc-btn:active{opacity:.6}
+.stops-bar{padding:10px 12px;border-top:1px solid var(--border);display:flex;gap:6px;flex-shrink:0}
+.stops-bar .btn{flex:1;font-size:11px;padding:9px 4px}
+
+/* Recorded routes */
+.rec-list{flex:1;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:7px;-webkit-overflow-scrolling:touch}
+.rec-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.rec-card-head{display:flex;align-items:center;gap:8px}
+.rec-card-name{flex:1;font-size:14px;font-weight:700}
+.rec-card-meta{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.rec-card-btns{display:flex;gap:6px;margin-top:2px}
+
+/* Pos marker */
+.pos-arrow{font-size:28px;line-height:1;transition:transform .4s;filter:drop-shadow(0 0 5px rgba(88,166,255,.8))}
+.pos-dot{width:14px;height:14px;background:var(--blue);border:3px solid #fff;border-radius:50%;
+  box-shadow:0 0 0 0 rgba(88,166,255,.6);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(88,166,255,.6)}70%{box-shadow:0 0 0 10px rgba(88,166,255,0)}100%{box-shadow:0 0 0 0 rgba(88,166,255,0)}}
+
+/* Empty */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted);padding:28px;text-align:center;flex:1}
+.empty .icon{font-size:36px;opacity:.35}
+.empty p{font-size:12px;line-height:1.6}
+
+/* Leaflet */
+.leaflet-container{background:#1a1f2e}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-color:var(--border)!important;font-size:18px!important;width:36px!important;height:36px!important;line-height:36px!important}
+.leaflet-control-zoom{margin-bottom:110px!important;margin-left:12px!important}
+/* Keep zoom buttons larger for touch */
+.leaflet-control-zoom a{touch-action:manipulation}
+.leaflet-popup-content-wrapper{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px}
+.leaflet-popup-tip{background:var(--panel)}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
 </head>
 <body>
 
-<!-- ── Top bar ──────────────────────────────────────────────────────────── -->
-<div class="topbar" id="topbar">
-  <div class="topbar-logo">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-    <span>GPX</span>
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>GPX
   </div>
-  <div class="topbar-stats">
-    <div class="ts-item"><div class="ts-lbl">ROUTE</div><div class="ts-val" id="h-dist">—</div></div>
-    <div class="ts-item"><div class="ts-lbl">STOPS</div><div class="ts-val" id="h-stops">0/0</div></div>
-    <div class="ts-item"><div class="ts-lbl">PLANNED</div><div class="ts-val accent" id="h-prog">—</div></div>
-    <div class="ts-item"><div class="ts-lbl">ACTUAL</div><div class="ts-val green" id="h-real">00:00:00</div></div>
+  <div class="top-stats">
+    <div class="tstat"><span class="tstat-l">Route</span><span class="tstat-v" id="h-dist">—</span></div>
+    <div class="tdiv"></div>
+    <div class="tstat"><span class="tstat-l">Stops</span><span class="tstat-v" id="h-stops">0/0</span></div>
+    <div class="tdiv"></div>
+    <div class="tstat"><span class="tstat-l">Planned</span><span class="tstat-v" id="h-prog">—</span></div>
+    <div class="tdiv"></div>
+    <div class="tstat"><span class="tstat-l">Actual</span><span class="tstat-v ok" id="h-real">—</span></div>
   </div>
-  <div class="topbar-actions">
-    <label class="btn" title="Open GPX or JSON file">
-      📂 <input type="file" id="file-input" accept=".gpx,.json" style="display:none"
-           onchange="App.handleFile(this)">
-    </label>
-    <button id="map-style-btn" class="btn" onclick="App.toggleMapStyle()" title="Day/Night map">🌙</button>
-    <button id="btn-rec"      class="btn rec"   onclick="App.startRec()">⏺ Rec</button>
-    <button id="btn-stop-rec" class="btn rec"   onclick="App.stopRec()"  style="display:none">⏹ Stop</button>
-    <button id="btn-nav"      class="btn go"    onclick="App.startNav()" disabled>▶ Nav</button>
-    <button id="btn-stop-nav" class="btn go"    onclick="App.stopNav()"  style="display:none">■ Nav</button>
+  <div class="top-actions">
+    <button class="btn primary" onclick="el('gpx-file').click()" style="min-width:38px;padding:7px">📂</button>
+    <input type="file" id="gpx-file" accept=".gpx" style="display:none" onchange="loadGPX(this)">
+    <button class="btn rec" id="btn-rec" onclick="toggleRec()">⏺ Rec</button>
+    <button id="map-style-btn" onclick="toggleMapStyle()" title="Toggle day/night map"
+      style="background:var(--panel);border:1px solid var(--border);border-radius:6px;
+             padding:7px 10px;font-size:16px;cursor:pointer;min-height:38px;
+             color:var(--text);transition:all .15s;user-select:none">🌙</button>
+    <button class="btn go"       id="btn-nav"  onclick="startNav()" disabled>▶ Nav</button>
+    <button class="btn stop-nav" id="btn-stop" onclick="stopNav()"  style="display:none">■ Parar</button>
   </div>
 </div>
 
-<!-- ── Summary bar (visible during nav) ─────────────────────────────────── -->
+<!-- SUMMARY BAR -->
 <div class="sum-bar" id="sum-bar">
   <div class="sb-cols">
     <div class="sb-item"><span class="sb-lbl">Done</span><span class="sb-val ok" id="sb-done">0/0</span></div>
@@ -64,209 +444,1462 @@
   </div>
 </div>
 
-<!-- ── Map ───────────────────────────────────────────────────────────────── -->
-<div class="map-wrap" id="map-wrap">
+<!-- MAP WRAP -->
+<div class="map-wrap">
   <div id="map"></div>
 
-  <!-- Nav HUD -->
+  <!-- ══════════════════ NAV HUD ══════════════════ -->
   <div class="nav-hud" id="nav-hud">
-    <!-- Instruction bar -->
+
+    <!-- Main instruction strip (Waze-style) -->
     <div class="hud-instr" id="hud-instr">
-      <div class="hud-instr-icon">
-        <div id="hud-icon">—</div>
-        <div class="hud-icon-lbl" id="hud-icon-lbl">WAIT</div>
+      <div class="hud-instr-icon straight" id="hud-icon">
+        <span id="hud-icon-arrow">↑</span>
+        <span class="hud-icon-lbl" id="hud-icon-lbl"></span>
       </div>
       <div class="hud-instr-body">
         <div class="hud-instr-dist far" id="hud-dist">—</div>
-        <div class="hud-instr-action"   id="hud-action">Open a GPX file</div>
+        <div class="hud-instr-action"   id="hud-action">Waiting for GPS...</div>
         <div class="hud-instr-detail"   id="hud-detail"></div>
+        <div class="hud-next-preview"   id="hud-preview"></div>
       </div>
       <div class="hud-instr-speed">
-        <div class="hud-spd-val" id="hud-spd">—</div>
+        <div class="hud-spd-val"  id="hud-spd">0</div>
         <div class="hud-spd-unit">km/h</div>
       </div>
     </div>
 
-    <!-- GPS status -->
-    <div class="gps-status" id="gps-status">
-      <span class="gps-dot idle" id="gps-dot"></span>
-      <span class="gps-msg"      id="gps-msg">GPS idle</span>
+    <!-- Compass -->
+    <div class="hud-compass">
+      <div class="hud-compass-arrow" id="hud-compass">↑</div>
+      <div class="hud-compass-deg"   id="hud-cdeg">N</div>
     </div>
+    <!-- Voice toggle -->
+    <div id="hud-voice" onclick="toggleVoice()" title="Voice on/off" style="
+      position:absolute;right:12px;top:170px;z-index:910;pointer-events:auto;
+      background:rgba(13,17,23,.9);border:2px solid var(--green);border-radius:50%;
+      width:46px;height:46px;display:none;align-items:center;justify-content:center;
+      cursor:pointer;font-size:20px;transition:all .2s;user-select:none">🔊</div>
 
-    <!-- Voice button -->
-    <button class="voice-btn" id="voice-btn" onclick="App.toggleVoice()" title="Toggle voice">🔊</button>
-
-    <!-- Stops panel (floating) -->
-    <div class="hud-stops-panel" id="hud-stops-panel">
-      <div class="hud-sp-head">
-        <span>ROUTE STOPS</span>
-        <span id="stops-badge"></span>
-      </div>
-      <div id="hud-sp-list" style="overflow-y:auto;flex:1"></div>
-    </div>
-
-    <!-- Recording indicator -->
-    <div class="rec-indicator" id="rec-indicator" style="display:none">
-      <span class="rec-dot">●</span>
-      <span id="rec-sc">Recording...</span>
-    </div>
-
-    <!-- Stop photo corner overlay -->
-    <div class="stop-photo-ov" id="stop-photo-ov">
-      <div class="stop-photo-header">
-        <span class="stop-photo-name" id="spo-name">Stop</span>
-        <span class="stop-photo-close" onclick="App.hidePhotoOverlay?.() || document.getElementById('stop-photo-ov').classList.remove('on')">✕</span>
-      </div>
-      <div class="stop-photo-badge-wrap"><span id="spo-badge"></span></div>
-      <img class="stop-photo-img" id="spo-img" alt="stop" style="display:none">
-    </div>
-
-    <!-- Alert overlay -->
-    <div class="alert-ov" id="alert-ov" style="display:none">
-      <div class="alert-msg" id="alert-msg"></div>
-    </div>
-
-    <!-- Bottom strip: progress bar -->
+    <!-- Route progress strip -->
     <div class="hud-strip">
-      <div class="hs-bar"><div class="hs-fill" id="hs-fill" style="width:0%"></div></div>
-      <div class="hs-label" id="hs-label">No route</div>
+      <div class="hud-slbl" id="hud-pct">0%</div>
+      <div class="hud-sbar"><div class="hud-sfill" id="hud-sfill" style="width:0%"></div></div>
+      <div class="hud-slbl" id="hud-left">— remaining</div>
     </div>
-
-    <!-- Toggle stops panel button -->
-    <button class="hud-toggle" id="hud-toggle" onclick="App.toggleHudPanel()">📍 Stops</button>
-  </div><!-- /nav-hud -->
-</div><!-- /map-wrap -->
-
-<!-- ── Bottom sheet ──────────────────────────────────────────────────────── -->
-<div class="sheet" id="sheet">
-  <div class="sheet-handle" onclick="App.toggleSheet?.()"></div>
-
-  <!-- Tabs -->
-  <div class="tabs">
-    <button class="tab active" id="tab-route" onclick="App.switchTab('route')">🛤️ Route</button>
-    <button class="tab"        id="tab-gps"   onclick="App.switchTab('gps')">📡 GPS</button>
-    <button class="tab"        id="tab-stops" onclick="App.switchTab('stops')">
-      📍 Stops<span id="stops-badge2"></span>
-    </button>
-    <button class="tab"        id="tab-recs"  onclick="App.switchTab('recs')">
-      🗂 Saved<span id="rec-badge"></span>
-    </button>
   </div>
 
-  <!-- Route pane -->
-  <div class="tab-pane on" id="pane-route">
-    <div class="pane-inner">
-      <div class="empty" id="no-route">
-        <div class="empty-icon">🗺️</div>
-        <div class="empty-title">No route loaded</div>
-        <div class="empty-sub">Tap 📂 to open a GPX file, or ⏺ Rec to record a new route</div>
+  <!-- Sheet toggle button -->
+  <div class="hud-toggle" id="hud-toggle" onclick="toggleHudPanel()">📍 Stops</div>
+
+  <!-- Floating stops panel -->
+  <div class="hud-stops-panel" id="hud-sp">
+    <div class="hud-sp-head">
+      Route stops
+      <span style="cursor:pointer;color:var(--red);font-size:18px" onclick="toggleHudPanel()">✕</span>
+    </div>
+    <div id="hud-sp-list" style="overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch"></div>
+  </div>
+
+  <!-- Hidden camera input -->
+  <input type="file" id="cam-input" accept="image/*" capture="environment"
+         style="display:none" onchange="handleCameraPhoto(this)">
+
+  <!-- Recording indicator -->
+  <div class="rec-ind" id="rec-ind">
+    <div class="rec-dot"></div>
+    <div>
+      <div class="rec-label">Recording route</div>
+      <div class="rec-stats"       id="rec-stats">0 pts · 0.0 km</div>
+      <div class="rec-stops-count" id="rec-sc">0 stops detected</div>
+    </div>
+    <button class="btn stop-nav" style="padding:5px 10px;font-size:11px;min-height:30px" onclick="toggleRec()">■ Stop</button>
+  </div>
+
+  <!-- Stop events + camera prompt -->
+  <div class="cam-prompt" id="cam-prompt">
+    <div class="cam-prompt-title">📍 Stop <span id="cam-stop-num">1</span> detected</div>
+
+    <div class="cam-events-title">Events at this stop</div>
+    <div class="cam-events-row">
+      <button class="evt-btn" id="evt-door"  onclick="toggleStopEvent('openDoor')">
+        🚪<br>Open Door
+      </button>
+      <button class="evt-btn" id="evt-knee" onclick="toggleStopEvent('kneeling')">
+        ♿<br>Kneeling
+      </button>
+    </div>
+
+    <div class="cam-divider"></div>
+    <div class="cam-prompt-sub">Take a photo so the driver recognises this stop</div>
+    <div class="cam-prompt-btns">
+      <button class="btn primary" style="flex:2;font-size:13px;padding:10px 8px"
+              onclick="openCamera()">📷 Photo</button>
+      <button class="btn go"      style="flex:2;font-size:13px;padding:10px 8px"
+              onclick="confirmStopEvents()">✓ Done</button>
+    </div>
+  </div>
+
+  <!-- Stop photo overlay (shown when approaching a stop in navigation) -->
+  <div class="stop-photo-ov" id="stop-photo-ov">
+    <div class="stop-photo-header">
+      <div>
+        <div class="stop-photo-name"  id="spo-name">Stop</div>
+        <div class="stop-photo-badge" id="spo-badge">Approaching — 200 m</div>
       </div>
-      <div id="route-details" style="display:none;flex-direction:column;gap:10px">
+      <div class="stop-photo-close" onclick="closeStopPhoto()">✕</div>
+    </div>
+    <img class="stop-photo-img" id="spo-img" src="" alt="Stop photo">
+    <div class="stop-photo-none" id="spo-none">No photo available for this stop</div>
+  </div>
+
+  <!-- Arriving alert -->
+  <div class="arriving" id="arriving"></div>
+
+  <!-- Install banner -->
+  <div class="install-banner" id="install-banner">
+    <p>📲 Instalar <strong style="color:var(--accent)">GPX Navigator Pro</strong> como app?</p>
+    <div class="install-btns">
+      <button class="btn primary" style="flex:1" onclick="doInstall()">✓ Instalar</button>
+      <button class="btn" style="flex:1" onclick="hideInstall()">✕ Não</button>
+    </div>
+  </div>
+
+  <!-- BOTTOM SHEET -->
+  <div class="sheet mid" id="sheet"
+    ontouchstart="shTS(event)" ontouchmove="shTM(event)" ontouchend="shTE(event)">
+    <div class="sheet-handle" onclick="toggleSheet()"></div>
+    <div class="peek" onclick="toggleSheet()">
+      <span id="peek-icon" style="font-size:22px;flex-shrink:0">🗺️</span>
+      <div class="peek-left">
+        <div class="peek-name" id="peek-name">Load a GPX file</div>
+        <div class="peek-sub"  id="peek-sub">Tap 📂 to open a file</div>
+      </div>
+      <div class="peek-dist" id="peek-dist"></div>
+    </div>
+
+    <div class="sheet-tabs">
+      <div class="stab active" id="stab-rota"     onclick="switchTab('rota')">Route</div>
+      <div class="stab"        id="stab-nav"      onclick="switchTab('nav')">GPS</div>
+      <div class="stab"        id="stab-paradas"  onclick="switchTab('paradas')">Stops<span id="stops-badge" style="font-size:9px;color:var(--accent)"></span></div>
+      <div class="stab"        id="stab-gravadas" onclick="switchTab('gravadas')">Recordings<span id="rec-badge" style="font-size:9px;color:var(--red)"></span></div>
+    </div>
+
+    <!-- ROTA PANE -->
+    <div class="pane active" id="pane-rota" style="overflow-y:auto">
+      <div class="upload-zone">
+        <input type="file" accept=".gpx" onchange="loadGPX(this)">
+        <div class="icon">📂</div>
+        <strong>Load GPX</strong>
+        <p>Gerado pelo conversor_mat_gpx.py</p>
+      </div>
+      <div id="route-details" style="display:none;flex-direction:column">
         <div class="route-info">
-          <div class="ri-row"><span class="ri-lbl">File</span><span class="ri-val" id="ri-file">—</span></div>
-          <div class="ri-row"><span class="ri-lbl">Distance</span><span class="ri-val" id="ri-dist">—</span></div>
-          <div class="ri-row"><span class="ri-lbl">Stops</span><span class="ri-val" id="ri-stops">—</span></div>
-          <div class="ri-row"><span class="ri-lbl">Maneuvers</span><span class="ri-val" id="ri-man">—</span></div>
+          <div class="ri-grid">
+            <div class="ri-item"><div class="ril">Distance</div><div class="riv" id="ri-dist">—</div></div>
+            <div class="ri-item"><div class="ril">Pontos Track</div><div class="riv" id="ri-pts">—</div></div>
+            <div class="ri-item"><div class="ril">Stops</div><div class="riv" id="ri-wpts">—</div></div>
+            <div class="ri-item"><div class="ril">Planned time</div><div class="riv" id="ri-tprog">—</div></div>
+            <div class="ri-item"><div class="ril">Curvas</div><div class="riv" id="ri-turns">—</div></div>
+            <div class="ri-item"><div class="ril">Maneuvers</div><div class="riv" id="ri-maneuvers">—</div></div>
+          </div>
+        </div>
+        <div style="padding:0 14px 14px;display:flex;gap:8px">
+          <button class="btn" style="flex:1" onclick="el('gpx-file').click()">↺ Trocar GPX</button>
+          <button class="btn go" style="flex:1" id="btn-nav2" onclick="startNav()" disabled>▶ Navegar</button>
+        </div>
+      </div>
+      <div class="empty" id="no-route">
+        <div class="icon">🗺️</div>
+        <p>Load a <strong style="color:var(--accent)">.gpx</strong> file to see the route with turn-by-turn navigation and planned stops.</p>
+      </div>
+    </div>
+
+    <!-- GPS PANE -->
+    <div class="pane" id="pane-nav">
+      <div class="nav-section">
+        <div class="gps-status" id="gps-status">
+          <div class="gps-dot wait" id="gps-dot"></div>
+          <span id="gps-text">GPS não iniciado</span>
+        </div>
+        <div class="nav-field"><label>Raio chegada (m)</label>
+          <input type="range" min="10" max="300" value="80" id="rng-radius" oninput="el('val-radius').textContent=this.value+'m'">
+          <span class="val" id="val-radius">80m</span></div>
+        <div class="nav-field"><label>Auto-iniciar timer</label>
+          <input type="range" min="0" max="1" step="1" value="1" id="rng-auto" oninput="el('val-auto').textContent=['Não','Sim'][+this.value]">
+          <span class="val" id="val-auto">Sim</span></div>
+        <div class="nav-field"><label>Auto-parar timer</label>
+          <input type="range" min="0" max="1" step="1" value="1" id="rng-autostop" oninput="el('val-autostop').textContent=['Não','Sim'][+this.value]">
+          <span class="val" id="val-autostop">Sim</span></div>
+        <div class="nav-field"><label>Seguir posição</label>
+          <input type="range" min="0" max="1" step="1" value="1" id="rng-follow" oninput="el('val-follow').textContent=['Não','Sim'][+this.value]">
+          <span class="val" id="val-follow">Sim</span></div>
+        <div class="nav-field"><label>Zoom</label>
+          <input type="range" min="14" max="19" value="17" id="rng-zoom" oninput="el('val-zoom').textContent=this.value">
+          <span class="val" id="val-zoom">17</span></div>
+        <div class="nav-field"><label>Rec stop speed (km/h)</label>
+          <input type="range" min="1" max="15" value="5" id="rng-recvel" oninput="el('val-recvel').textContent=this.value">
+          <span class="val" id="val-recvel">5</span></div>
+        <div class="nav-field"><label>Dur. mín. stop rec. (s)</label>
+          <input type="range" min="3" max="60" value="5"  id="rng-recdur" oninput="el('val-recdur').textContent=this.value+'s'">
+          <span class="val" id="val-recdur">5s</span></div>
+        <div style="display:flex;gap:8px;padding-top:4px">
+          <button class="btn go"       id="btn-nav3"  style="flex:1" onclick="startNav()">▶ Start GPS</button>
+          <button class="btn stop-nav" id="btn-stop3" style="flex:1;display:none" onclick="stopNav()">■ Parar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PARADAS PANE -->
+    <div class="pane" id="pane-paradas">
+      <div class="stops-list" id="stops-list">
+        <div class="empty" id="stops-empty">
+          <div class="icon">📍</div>
+          <p>Load a GPX file with detected stops.</p>
+        </div>
+      </div>
+      <div class="stops-bar">
+        <button class="btn go" onclick="startAllTimers()">▶ Todos</button>
+        <button class="btn"    onclick="resetAllTimers()">↺ Reset</button>
+        <button class="btn"    onclick="exportCSV()">↓ CSV</button>
+      </div>
+    </div>
+
+    <!-- GRAVADAS PANE -->
+    <div class="pane" id="pane-gravadas">
+      <div class="rec-list" id="rec-list">
+        <div class="empty" id="rec-empty">
+          <div class="icon">⏺</div>
+          <p>Tap <strong style="color:var(--red)">⏺ Rec</strong> to record a new route. Stops are detected automatically by speed.</p>
         </div>
       </div>
     </div>
   </div>
-
-  <!-- GPS pane -->
-  <div class="tab-pane" id="pane-gps">
-    <div class="pane-inner">
-      <div class="settings-group">
-        <div class="sg-title">Navigation</div>
-        <div class="sg-row"><label>Arrival radius (m)</label>
-          <input type="range" min="30" max="200" value="80" id="rng-radius"
-            oninput="document.getElementById('val-radius').textContent=this.value+'m'">
-          <span id="val-radius">80m</span></div>
-        <div class="sg-row"><label>Auto-start timer</label>
-          <input type="range" min="0" max="1" value="1" id="rng-auto"
-            oninput="document.getElementById('val-auto').textContent=this.value==='1'?'Yes':'No'">
-          <span id="val-auto">Yes</span></div>
-        <div class="sg-row"><label>Auto-stop timer</label>
-          <input type="range" min="0" max="1" value="1" id="rng-autostop"
-            oninput="document.getElementById('val-autostop').textContent=this.value==='1'?'Yes':'No'">
-          <span id="val-autostop">Yes</span></div>
-        <div class="sg-row"><label>Follow position</label>
-          <input type="range" min="0" max="1" value="1" id="rng-follow"
-            oninput="document.getElementById('val-follow').textContent=this.value==='1'?'Yes':'No'">
-          <span id="val-follow">Yes</span></div>
-        <div class="sg-row"><label>Zoom level</label>
-          <input type="range" min="13" max="20" value="17" id="rng-zoom"
-            oninput="document.getElementById('val-zoom').textContent=this.value">
-          <span id="val-zoom">17</span></div>
-      </div>
-      <div class="settings-group">
-        <div class="sg-title">Recording — stop detection</div>
-        <div class="sg-row"><label>Stop speed (km/h)</label>
-          <input type="range" min="1" max="20" value="5" id="rng-recspd"
-            oninput="document.getElementById('val-recspd').textContent=this.value+'km/h'">
-          <span id="val-recspd">5km/h</span></div>
-        <div class="sg-row"><label>Min stop duration (s)</label>
-          <input type="range" min="3" max="60" value="5" id="rng-recdur"
-            oninput="document.getElementById('val-recdur').textContent=this.value+'s'">
-          <span id="val-recdur">5s</span></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Stops pane -->
-  <div class="tab-pane" id="pane-stops">
-    <div class="pane-inner">
-      <div class="empty" id="stops-empty">No stops loaded</div>
-      <div class="stops-list" id="stops-list"></div>
-    </div>
-  </div>
-
-  <!-- Recordings pane -->
-  <div class="tab-pane" id="pane-recs">
-    <div class="pane-inner">
-      <div class="pane-actions">
-        <label class="btn small">📥 Import JSON
-          <input type="file" accept=".json" style="display:none" onchange="App.handleFile(this)">
-        </label>
-        <button class="btn small" onclick="App.exportAllJSON()">📤 Export All</button>
-      </div>
-      <div class="empty" id="rec-empty">No saved recordings yet.<br>Tap ⏺ Rec to record a route.</div>
-      <div id="rec-list"></div>
-    </div>
-  </div>
-
-</div><!-- /sheet -->
-
-<!-- ── Camera prompt (recording stop detected) ───────────────────────────── -->
-<div class="cam-prompt" id="cam-prompt">
-  <div class="cam-prompt-title">📍 Stop <span id="cam-stop-num">1</span> detected</div>
-  <div class="cam-events-title">Events at this stop</div>
-  <div class="cam-events-row">
-    <button class="evt-btn" id="evt-door"  onclick="App.toggleStopEvent('openDoor')">🚪<br>Open Door</button>
-    <button class="evt-btn" id="evt-knee"  onclick="App.toggleStopEvent('kneeling')">♿<br>Kneeling</button>
-  </div>
-  <div class="cam-divider"></div>
-  <div class="cam-prompt-sub">Take a photo so the driver recognises this stop</div>
-  <div class="cam-prompt-btns">
-    <button class="btn primary" onclick="App.openCamera()">📷 Photo</button>
-    <button class="btn go"      onclick="App.confirmStop()">✓ Done</button>
-  </div>
 </div>
 
-<!-- Hidden file inputs -->
-<input type="file" id="cam-input" accept="image/*" capture="environment"
-       style="display:none" onchange="App.handleCameraFile(this)">
-
-<!-- ── Scripts ───────────────────────────────────────────────────────────── -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script type="module" src="js/app.js"></script>
-
 <script>
-  // Service Worker registration
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js')
-      .then(r => console.log('[SW] Registered', r.scope))
-      .catch(e => console.warn('[SW] Failed:', e));
+'use strict';
+if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+
+// ── PWA ────────────────────────────────────────────────
+let deferredInstall=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstall=e;el('install-banner').style.display='flex'});
+function doInstall(){if(!deferredInstall)return;deferredInstall.prompt();deferredInstall.userChoice.then(()=>{deferredInstall=null;hideInstall()})}
+function hideInstall(){el('install-banner').style.display='none'}
+window.addEventListener('appinstalled',hideInstall);
+
+// ── STATE ──────────────────────────────────────────────
+let map, routeLayer, routeDoneLayer, routeAheadLayer, recLayer;
+let posMarker, accCircle;
+let stops=[], stopMarkers={};
+let routePts=[];          // [{lat,lon}] full route
+let totalRouteDist=0;
+let maneuvers=[];         // computed turn-by-turn instructions
+let navActive=false, watchId=null, currentPos=null, currentHeading=null;
+let arrivingTmr=null;
+const insideStop=new Set();
+
+// Recording state
+let isRec=false, recPoints=[], recStops=[], recStopCandidate=null;
+let savedRecs=[];
+let pendingPhotoStopIdx=-1;
+
+// ── Persist recordings across page reloads ───────────
+function saveRecordings(){
+  try{
+    localStorage.setItem('gpx-nav-recs', JSON.stringify(
+      savedRecs.filter(Boolean).map(r=>({
+        name:r.name, dist:+(r.dist??0)||0,
+        date:r.date instanceof Date?r.date.toISOString():r.date,
+        points:r.points.map(p=>({lat:p.lat,lng:p.lng,t:p.t})), // compact: no speed/alt
+        stops:r.stops.map(s=>({lat:s.lat,lng:s.lng,t:s.t,dur_s:s.dur_s,photo:s.photo||null,events:s.events||[]}))
+      }))
+    ));
+  }catch(e){console.warn('Recordings not saved:',e.message);}
+}
+
+function loadStoredRecordings(){
+  try{
+    const raw=localStorage.getItem('gpx-nav-recs');
+    if(!raw)return;
+    const parsed=JSON.parse(raw);
+    parsed.forEach(r=>{
+      const rec={...r,date:new Date(r.date)};
+      savedRecs.push(rec);
+      renderRecCard(rec,savedRecs.length-1);
+    });
+    if(savedRecs.length){
+      el('rec-badge').textContent=` (${savedRecs.length})`;
+      el('rec-empty').style.display='none';
+    }
+  }catch(e){console.warn('Recordings not loaded:',e.message);}
+}   // which stop is waiting for a photo
+let photoPreviewStopId=null;  // which stop photo is showing in overlay
+
+// ── Photo helpers ────────────────────────────────────
+function openCamera(){
+  el('cam-input').value='';
+  el('cam-input').click();
+}
+
+let pendingStopEvents=[];
+
+function toggleStopEvent(evt){
+  const idx=pendingStopEvents.indexOf(evt);
+  if(idx>=0)pendingStopEvents.splice(idx,1);
+  else pendingStopEvents.push(evt);
+  el('evt-door').classList.toggle('active',pendingStopEvents.includes('openDoor'));
+  el('evt-knee').classList.toggle('active',pendingStopEvents.includes('kneeling'));
+}
+
+function confirmStopEvents(){
+  // Save selected events to this stop
+  if(pendingPhotoStopIdx>=0&&pendingPhotoStopIdx<recStops.length){
+    recStops[pendingPhotoStopIdx].events=[...pendingStopEvents];
   }
+  pendingStopEvents=[];
+  // Reset button states
+  el('evt-door').classList.remove('active');
+  el('evt-knee').classList.remove('active');
+  el('cam-prompt').classList.remove('on');
+  pendingPhotoStopIdx=-1;
+}
+
+function skipPhoto(){
+  confirmStopEvents(); // treat skip as confirm with no events/photo
+}
+
+async function handleCameraPhoto(input){
+  el('cam-prompt').classList.remove('on');
+  const file=input.files[0];if(!file)return;
+  const b64=await compressPhoto(file,800);
+  if(pendingPhotoStopIdx>=0&&pendingPhotoStopIdx<recStops.length){
+    recStops[pendingPhotoStopIdx].photo=b64;
+    updateStopMarkerPhoto(pendingPhotoStopIdx);
+    el('rec-sc').textContent=`${recStops.length} stop${recStops.length>1?'s':''} detected (${recStops.filter(s=>s.photo).length} with photo)`;
+    speakText('Photo saved for stop '+(pendingPhotoStopIdx+1));
+  saveRecordings();
+  }
+  pendingPhotoStopIdx=-1;
+}
+
+function compressPhoto(file,maxPx=800){
+  return new Promise(resolve=>{
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    img.onload=()=>{
+      const scale=Math.min(1,maxPx/Math.max(img.width,img.height));
+      const c=document.createElement('canvas');
+      c.width=Math.round(img.width*scale);c.height=Math.round(img.height*scale);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg',0.72));
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);resolve(null);}
+    img.src=url;
+  });
+}
+
+function updateStopMarkerPhoto(stopIdx){
+  // Redraw marker to show camera icon indicating photo exists
+  // (markers are standalone L.marker, we rebuild the icon)
+}
+
+// ── Stop photo overlay (navigation mode) ─────────────
+let photoAutoClose=null;
+function showStopPhoto(stop,distM){
+  if(!stop||!stop.photo) return; // no photo — nothing to show
+  const ov=el('stop-photo-ov');
+  el('spo-name').textContent=stop.name||`Stop ${stop.id}`;
+  el('spo-badge').textContent=distM<50?'At stop':`${Math.round(distM)} m ahead`;
+  el('spo-img').src=stop.photo;
+  el('spo-img').style.display='block';
+  el('spo-none').style.display='none';
+  ov.classList.add('on');
+  photoPreviewStopId=stop.id;
+  // Auto-close after 12s so it doesn't block the screen
+  clearTimeout(photoAutoClose);
+  photoAutoClose=setTimeout(closeStopPhoto,12000);
+}
+function closeStopPhoto(){
+  el('stop-photo-ov').classList.remove('on');
+  photoPreviewStopId=null;
+}
+
+// ── Wake Lock (keep screen on during nav/rec) ──
+let wakeLock=null;
+async function requestWakeLock(){
+  if(!('wakeLock' in navigator))return;
+  try{
+    wakeLock=await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release',()=>{
+      if(document.visibilityState==='visible'&&(navActive||isRec)) requestWakeLock();
+    });
+    console.log('[WakeLock] Screen kept on');
+  }catch(e){console.warn('[WakeLock]',e.message);}
+}
+function releaseWakeLock(){
+  if(wakeLock){wakeLock.release();wakeLock=null;}
+}
+// Re-acquire when tab becomes visible again
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&(navActive||isRec)) requestWakeLock();
+});
+
+// ── Cumulative distance cache for fast route progress ──
+let routeCumDist=[];   // routeCumDist[i] = km from pt[0] to pt[i]
+let lastRouteIdx=0;    // last known route index — prevents backward jumps on bidirectional roads
+
+function buildCumDist(pts){
+  routeCumDist=[0];
+  for(let i=1;i<pts.length;i++)
+    routeCumDist.push(routeCumDist[i-1]+haversine(pts[i-1].lat,pts[i-1].lon,pts[i].lat,pts[i].lon));
+}
+
+// ── Voice guidance ───────────────────────────────────
+let voiceOn=true;
+let lastVoiceKey='';          // prevents repeating same announcement
+let lastVoiceManeuver='';     // tracks when maneuver changes
+
+function toggleVoice(){
+  voiceOn=!voiceOn;
+  const btn=el('hud-voice');
+  if(btn){btn.textContent=voiceOn?'🔊':'🔇';btn.style.borderColor=voiceOn?'var(--green)':'var(--red)';}
+  if(!voiceOn&&window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+function speakText(text){
+  if(!voiceOn||!window.speechSynthesis)return;
+  window.speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='en-US';u.rate=1.0;u.pitch=1.0;u.volume=1.0;
+  window.speechSynthesis.speak(u);
+}
+
+function maybeSpeak(manType, label, distM){
+  if(!voiceOn)return;
+  // Determine distance bracket
+  let bracket='';
+  let text='';
+  if(distM>600)return;
+  if(distM>350)      {bracket='500';text=`In 500 meters, ${label}`;}
+  else if(distM>120) {bracket='200';text=`In ${Math.round(distM/10)*10} meters, ${label}`;}
+  else if(distM>20)  {bracket='close';text=`${label} ahead`;}
+  else               {bracket='now';text=`${label} now`;}
+  const key=`${manType}_${bracket}`;
+  if(key===lastVoiceKey)return; // already announced
+  lastVoiceKey=key;
+  // Reset key when maneuver changes
+  if(manType!==lastVoiceManeuver){lastVoiceKey=key;lastVoiceManeuver=manType;}
+  speakText(text);
+}
+
+// ── GPS speed fallback (Android often returns speed=null when stopped) ──
+let lastGPSForSpeed=null;
+function calcSpeedFromPoints(lat,lng){
+  const now=Date.now();
+  if(!lastGPSForSpeed) return null;
+  const dt=(now-lastGPSForSpeed.t)/3600000; // hours
+  if(dt<=0||dt>15/3600) return null;        // ignore gaps >15s
+  return haversine(lastGPSForSpeed.lat,lastGPSForSpeed.lng,lat,lng)/dt; // km/h
+}
+
+// ── MAP ────────────────────────────────────────────────
+map=L.map('map',{center:[-15,-50],zoom:5,zoomControl:false,tap:true,rotate:true,rotateControl:false,touchRotate:false,shiftKeyRotate:false});
+loadStoredRecordings(); // restore recordings after page reload
+L.control.zoom({position:'bottomleft'}).addTo(map);
+
+// ── CSS-based heading-up map rotation ─────────────
+// Composes rotation with Leaflet's own translate3d so tiles render correctly
+let _lastBearing=0;
+function setMapBearing(deg){
+  const pane=map.getContainer().querySelector('.leaflet-map-pane');
+  if(!pane)return;
+  const sz=map.getSize();
+  const t=pane.style.transform||'';
+  // Parse Leaflet's translate3d(tx,ty,0)
+  const m=t.match(/translate3d\(\s*([\d.-]+)px,\s*([\d.-]+)px/);
+  if(!m)return;
+  const tx=parseFloat(m[1]),ty=parseFloat(m[2]);
+  // Rotation origin = center of visible screen in map-pane coords
+  const ox=sz.x/2-tx, oy=sz.y/2-ty;
+  pane.style.transformOrigin=`${ox}px ${oy}px`;
+  pane.style.transform=`translate3d(${tx}px,${ty}px,0) rotate(${deg}deg)`;
+  _lastBearing=deg;
+}
+// Re-apply rotation after every Leaflet move/zoom (Leaflet rewrites transform)
+map.on('move zoom',()=>{
+  if((navActive||isRec)&&_lastBearing!==0)
+    requestAnimationFrame(()=>setMapBearing(_lastBearing));
+});
+// Map tile layers — Voyager default (readable), Dark for night
+const TILES={
+  day: {
+    url:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    label:'☀️'
+  },
+  night: {
+    url:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    label:'🌙'
+  }
+};
+let currentTile='day';
+let tileLayer=L.tileLayer(TILES.day.url,{
+  attribution:'&copy; OpenStreetMap &copy; CARTO',subdomains:'abcd',maxZoom:20
+}).addTo(map);
+
+function toggleMapStyle(){
+  currentTile=currentTile==='day'?'night':'day';
+  map.removeLayer(tileLayer);
+  tileLayer=L.tileLayer(TILES[currentTile].url,{
+    attribution:'&copy; OpenStreetMap &copy; CARTO',subdomains:'abcd',maxZoom:20
+  }).addTo(map);
+  // TileLayer goes under other layers — bring route/markers to front
+  [routeLayer,routeDoneLayer,routeAheadLayer,recLayer].forEach(l=>l?.bringToFront());
+  Object.values(stopMarkers).forEach(m=>m?.bringToFront?.());
+  const btn=el('map-style-btn');
+  if(btn) btn.textContent=TILES[currentTile==='day'?'night':'day'].label;
+}
+
+// ── SHEET ──────────────────────────────────────────────
+let shState='mid',tsY=0;
+function toggleSheet(){shState=shState==='expanded'?'mid':'expanded';applySheet()}
+function applySheet(){const s=el('sheet');s.classList.remove('expanded','mid','hidden');s.classList.add(shState)}
+function shTS(e){tsY=e.touches[0]?.clientY||0}
+function shTM(e){if(e.target.closest('.stops-list,.rec-list,.nav-section')&&shState==='expanded')return;e.preventDefault()}
+function shTE(e){const dy=(e.changedTouches[0]?.clientY||tsY)-tsY;if(Math.abs(dy)<25)return;shState=dy>0?'mid':'expanded';applySheet()}
+
+function switchTab(n){
+  ['rota','nav','paradas','gravadas'].forEach(t=>{
+    el('stab-'+t).classList.toggle('active',t===n);
+    el('pane-'+t).classList.toggle('active',t===n);
+  });
+  if(shState!=='expanded'){shState='expanded';applySheet()}
+}
+
+// Floating panel during nav
+let hudPanelOpen=false;
+function toggleHudPanel(){
+  hudPanelOpen=!hudPanelOpen;
+  el('hud-sp').classList.toggle('on',hudPanelOpen);
+  if(hudPanelOpen) renderHudPanel();
+}
+function renderHudPanel(){
+  const c=el('hud-sp-list');c.innerHTML='';
+  // Show only the CURRENT stop + NEXT upcoming stop (not the full list)
+  const current=stops.find(s=>s.state==='current');
+  const next=stops.find(s=>s.state==='waiting');
+  const toShow=[current,next].filter(Boolean);
+  const total=stops.length, done=stops.filter(s=>s.state==='done').length;
+  // Progress header
+  const hdr=document.createElement('div');
+  hdr.style.cssText='padding:6px 12px;font-size:11px;font-family:var(--mono);color:var(--muted);border-bottom:1px solid var(--border)';
+  hdr.textContent=`Stop ${done+1} of ${total} · ${done} done`;
+  c.appendChild(hdr);
+  toShow.forEach(s=>{
+    const row=document.createElement('div');
+    const delta=s.elapsed-(s.dur_s||0);
+    const timerTxt=s.elapsed>0||s.state==='current'?fmtTime(s.elapsed):'—';
+    const planned=s.dur_s?`/${fmtTime(s.dur_s)}`:'';
+    const timerCls=s.running?'running':delta>0&&s.elapsed>0?'over':'';
+    row.className=`hud-stop-row ${s.state}`;
+    row.innerHTML=`
+      <div class="hud-sr-num ${s.state==='done'?'done':s.state==='current'?'current':'waiting'}">
+        ${s.state==='done'?'✓':s.id}
+      </div>
+      <div class="hud-sr-name">${s.name}${(s.events||[]).map(e=>
+        `<span class="stop-event-badge">${e==='openDoor'?'🚪':e==='kneeling'?'♿':'⚡'}</span>`
+      ).join('')}</div>
+      <div class="hud-sr-timer ${timerCls}">${timerTxt}${s.state==='current'?planned:''}</div>
+      ${s.state==='current'?`
+        <button class="hud-sr-done-btn"
+          onclick="markDone(${s.id});renderHudPanel();speakText('Stop ${s.id} done')">
+          ✓ Next
+        </button>`:''}`;
+    c.appendChild(row);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  TURN-BY-TURN ENGINE
+// ══════════════════════════════════════════════════════
+
+// Compute angle difference (-180 to +180)
+function angleDiff(a,b){let d=b-a;while(d>180)d-=360;while(d<-180)d+=360;return d}
+
+// Classify angle difference into maneuver type
+function classifyTurn(diff,deg){
+  if(Math.abs(diff)<20) return{type:'straight',icon:'↑',label:'Continue straight',cls:'straight'};
+  if(diff>=150||diff<=-150) return{type:'uturn',icon:'↩',label:'Make a U-turn',cls:'turn'};
+  if(diff>=80)  return{type:'right',icon:'→',label:'Turn right',cls:'turn'};
+  if(diff>=30)  return{type:'sr',   icon:'↗',label:'Slight right',cls:'straight'};
+  if(diff<=-80) return{type:'left', icon:'←',label:'Turn left',cls:'turn'};
+  if(diff<=-30) return{type:'sl',   icon:'↖',label:'Slight left',cls:'straight'};
+  return{type:'straight',icon:'↑',label:'Continue straight',cls:'straight'};
+}
+
+// Build maneuvers array from route points
+// Returns [{idx, lat, lon, distFromStart, icon, label, cls}]
+function buildManeuvers(pts){
+  const result=[];
+  const SMOOTH=5;      // average over N points to reduce noise
+  const MIN_TURN=28;   // degrees to call it a real turn
+  const MIN_SEP=0.04;  // km minimum between maneuvers
+
+  let lastManeuverDist=0;
+  let cumDist=0;
+
+  for(let i=SMOOTH;i<pts.length-SMOOTH;i++){
+    // Cumulative distance
+    cumDist+=haversine(pts[i-1].lat,pts[i-1].lon,pts[i].lat,pts[i].lon);
+
+    const b1=brng(pts[i-SMOOTH].lat,pts[i-SMOOTH].lon,pts[i].lat,pts[i].lon);
+    const b2=brng(pts[i].lat,pts[i].lon,pts[i+SMOOTH].lat,pts[i+SMOOTH].lon);
+    const diff=angleDiff(b1,b2);
+
+    if(Math.abs(diff)>=MIN_TURN && cumDist-lastManeuverDist>=MIN_SEP){
+      const m=classifyTurn(diff);
+      if(m.type!=='straight'){
+        result.push({idx:i,lat:pts[i].lat,lon:pts[i].lon,distFromStart:cumDist,...m});
+        lastManeuverDist=cumDist;
+      }
+    }
+  }
+
+  // Add arrival at end
+  result.push({
+    idx:pts.length-1,lat:pts[pts.length-1].lat,lon:pts[pts.length-1].lon,
+    distFromStart:totalRouteDist,type:'arrive',icon:'🏁',label:'Arrived at destination',cls:'arrive'
+  });
+
+  return result;
+}
+
+// Find maneuver to show based on current route index
+function getNextManeuver(curIdx,curDistFromStart){
+  const radius=+el('rng-radius').value||80;
+
+  // Find nearest non-done stop within 4x radius
+  const nextStop=stops.filter(s=>s.state!=='done').find(s=>{
+    const d=haversine(currentPos.lat,currentPos.lng,s.lat,s.lng)*1000;
+    return d<radius*4;
+  });
+
+  const upcoming=maneuvers.filter(m=>m.idx>curIdx&&m.distFromStart>curDistFromStart);
+  const nextMan=upcoming[0]||null;
+
+  if(nextStop){
+    const stopDist=haversine(currentPos.lat,currentPos.lng,nextStop.lat,nextStop.lng)*1000;
+    const manDist=nextMan?haversine(currentPos.lat,currentPos.lng,nextMan.lat,nextMan.lon)*1000:Infinity;
+    if(stopDist<manDist){
+      // AT the stop (inside arrival radius) — show live timer + tap Done to continue
+      if(stopDist<=radius&&nextStop.state==='current'){
+        const elapsed=fmtTime(nextStop.elapsed);
+        const planned=nextStop.dur_s?` / ${fmtTime(nextStop.dur_s)}`:'';
+        return{dist:0,icon:'⏸',
+          label:nextStop.running?`⏱ ${elapsed}${planned}`:'At stop — tap Done',
+          detail:`${nextStop.name} · tap "✓ Done — Next →" to continue`,
+          cls:'stop',type:'stop'};
+      }
+      // Approaching stop
+      return{dist:stopDist,icon:'⏸',label:'Make a stop',
+        detail:nextStop.name+(nextStop.dur_s?` · Planned: ${fmtTime(nextStop.dur_s)}`:''),
+        cls:'stop',type:'stop'};
+    }
+  }
+
+  if(!nextMan) return{dist:0,icon:'🏁',label:'Destination reached',detail:'',cls:'arrive',type:'arrive'};
+  const distM=haversine(currentPos.lat,currentPos.lng,nextMan.lat,nextMan.lon)*1000;
+  const afterTxt=upcoming[1]?`Then: ${upcoming[1].label}`:'';
+  return{dist:distM,icon:nextMan.icon,label:nextMan.label,detail:afterTxt,cls:nextMan.cls};
+}
+
+// Format distance for instruction
+function fmtDist(m){
+  if(m<20)  return'here';
+  if(m<1000)return Math.round(m/10)*10+' m';
+  return(m/1000).toFixed(1)+' km';
+}
+
+// ── GPX LOAD ───────────────────────────────────────────
+function loadGPX(input){
+  const file=input.files[0];if(!file)return;
+  const fr=new FileReader();fr.onload=e=>parseGPX(e.target.result,file.name);fr.readAsText(file);
+  input.value='';
+}
+
+function clearMapLayers(){
+  [routeLayer,routeDoneLayer,routeAheadLayer,routeRemainLayer,recLayer].forEach(l=>{if(l)map.removeLayer(l)});
+  routeLayer=routeDoneLayer=routeAheadLayer=routeRemainLayer=recLayer=null;
+  Object.values(stopMarkers).forEach(m=>map.removeLayer(m));
+  stopMarkers={};
+}
+
+function parseGPX(xml,filename){
+  const doc=new DOMParser().parseFromString(xml,'application/xml');
+  const trkpts=doc.querySelectorAll('trkpt');
+  const pts=[];
+  trkpts.forEach(p=>{
+    const lat=parseFloat(p.getAttribute('lat')),lon=parseFloat(p.getAttribute('lon'));
+    const timeEl=p.querySelector('time');
+    if(!isNaN(lat)&&!isNaN(lon)) pts.push({lat,lon,t:timeEl?new Date(timeEl.textContent):null});
+  });
+  if(pts.length<2){alert('GPX inválido ou sem pontos de track.');return}
+
+  clearMapLayers();
+  stops=[];insideStop.clear();el('stops-list').innerHTML='';
+
+  routePts=pts;buildCumDist(pts);totalRouteDist=routeCumDist[routeCumDist.length-1];
+  lastRouteIdx=0;
+
+  // Draw layers
+  const ll=pts.map(p=>[p.lat,p.lon]);
+  routeLayer    =L.polyline(ll,{color:'rgba(240,165,0,.1)',weight:5}).addTo(map);
+  routeAheadLayer=L.polyline(ll,{color:'#f0a500',weight:5,opacity:.95}).addTo(map);
+  routeRemainLayer=L.polyline([],{color:'rgba(240,165,0,.3)',weight:3,opacity:.6,dashArray:'6 4'}).addTo(map);
+  routeDoneLayer =L.polyline([],{color:'#555',weight:4,opacity:.5}).addTo(map);
+  map.fitBounds(routeLayer.getBounds(),{padding:[20,20]});
+
+  // Start / end markers
+  const dot=c=>L.divIcon({html:`<div style="background:${c};width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 8px ${c}"></div>`,className:'',iconAnchor:[7,7]});
+  L.marker(ll[0],{icon:dot('#3fb950')}).addTo(map).bindTooltip('Start');
+  L.marker(ll[ll.length-1],{icon:dot('#f85149')}).addTo(map).bindTooltip('End');
+
+  // Waypoints → stops
+  doc.querySelectorAll('wpt').forEach((w,i)=>{
+    const lat=parseFloat(w.getAttribute('lat')),lon=parseFloat(w.getAttribute('lon'));
+    if(isNaN(lat)||isNaN(lon))return;
+    const name=w.querySelector('name')?.textContent||`Stop ${i+1}`;
+    const desc=w.querySelector('desc')?.textContent||'';
+    const cmt =w.querySelector('cmt')?.textContent||'';
+    let dur_s=0;
+    const m1=cmt.match(/duracao_s=(\d+)/);if(m1)dur_s=parseInt(m1[1]);
+    if(!dur_s){const m2=desc.match(/Dura[çc][aã]o:\s*([\d.]+)\s*min/i);if(m2)dur_s=Math.round(parseFloat(m2[1])*60)}
+    const id=i+1;
+    stops.push({id,name,lat,lng:lon,dur_s,elapsed:0,running:false,intervalId:null,state:'waiting',desc});
+    stopMarkers[id]=L.marker([lat,lon],{icon:mkStopIcon(id,'waiting')}).addTo(map)
+      .bindPopup(`<strong>${name}</strong>${dur_s?`<br><small style="color:#888;font-family:var(--mono)">⏱ ${fmtTime(dur_s)}</small>`:''}`,{maxWidth:180});
+    renderCard(stops[stops.length-1]);
+  });
+
+  // Build turn-by-turn maneuvers
+  maneuvers=buildManeuvers(pts);
+
+  // Stats
+  const totalProg=stops.reduce((a,s)=>a+s.dur_s,0);
+  el('ri-dist').textContent=totalRouteDist>=1?totalRouteDist.toFixed(2)+' km':(totalRouteDist*1000).toFixed(0)+' m';
+  el('ri-pts').textContent=pts.length;
+  el('ri-wpts').textContent=stops.length;
+  el('ri-tprog').textContent=fmtTime(totalProg);
+  el('ri-turns').textContent=maneuvers.filter(m=>m.type!=='straight'&&m.type!=='arrive').length;
+  el('ri-maneuvers').textContent=maneuvers.length;
+  el('h-dist').textContent=totalRouteDist>=1?totalRouteDist.toFixed(1)+'km':(totalRouteDist*1000).toFixed(0)+'m';
+  el('h-prog').textContent=totalProg?fmtTime(totalProg):'—';el('h-real').textContent='00:00:00';
+  el('h-stops').textContent=`0/${stops.length}`;
+  el('stops-badge').textContent=stops.length?` (${stops.length})`:'';
+  el('no-route').style.display='none';el('route-details').style.display='flex';
+  if(el('stops-empty'))el('stops-empty').style.display=stops.length?'none':'';
+  el('btn-nav').disabled=false;el('btn-nav2').disabled=false;
+  el('peek-icon').textContent='🗺️';el('peek-name').textContent=filename;
+  el('peek-sub').textContent=`${stops.length} stops · ${maneuvers.filter(m=>m.type!=='arrive').length} maneuvers`;
+  updSummaryBar();switchTab('rota');shState='mid';applySheet();
+}
+
+// ── STOP CARDS ─────────────────────────────────────────
+function mkStopIcon(id,state){
+  const colors={waiting:'#f0a500',current:'#3fb950',done:'#555'};
+  const lbl=state==='done'?'✓':id;const c=colors[state]||'#f0a500';
+  return L.divIcon({
+    html:`<div style="background:${c};color:${state==='done'?'#aaa':'#000'};width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center"><span style="transform:rotate(45deg);font-size:12px;font-weight:700">${lbl}</span></div>`,
+    className:'',iconSize:[30,30],iconAnchor:[15,30],popupAnchor:[0,-34]
+  });
+}
+function renderCard(s){
+  if(el('stops-empty')) el('stops-empty').style.display='none';
+  const card=document.createElement('div');
+  card.className=`stop-card state-waiting`;card.id=`sc-${s.id}`;
+  card.innerHTML=cardHTML(s);el('stops-list').appendChild(card);
+}
+function cardHTML(s){
+  const hp=s.dur_s>0;
+  return `
+  <div class="sc-head">
+    <div class="sc-num waiting" id="scnum-${s.id}">${s.id}</div>
+    <div class="sc-name">${s.name}${s.photo?' 📷':''}${(s.events||[]).map(e=>
+      `<span class="stop-event-badge">${e==='openDoor'?'🚪 Door':e==='kneeling'?'♿ Knee':''}</span>`
+    ).join('')}</div>
+    <span class="sc-badge waiting" id="scst-${s.id}">Waiting</span>
+  </div>
+  <div class="sc-times">
+    <div class="sc-time-col">
+      <div class="sc-time-label">PLANNED</div>
+      <div class="sc-time-val">${hp?fmtTime(s.dur_s):'—'}</div>
+      ${hp?`<div class="sc-delta" id="scd-${s.id}"></div>`:''}
+    </div>
+    <div class="sc-time-col real">
+      <div class="sc-time-label">ACTUAL</div>
+      <div class="sc-time-val" id="td-${s.id}">00:00:00</div>
+    </div>
+  </div>
+  ${hp?`<div class="sc-prog"><div class="sc-prog-bg"><div class="sc-prog-fill" id="scb-${s.id}" style="width:0%;background:var(--green)"></div></div></div>`:''}
+  <div class="sc-ctrl">
+    <button class="tbtn go"  id="tbgo-${s.id}" onclick="startTimer(${s.id})">▶</button>
+    <button class="tbtn ps"  id="tbps-${s.id}" onclick="pauseTimer(${s.id})" style="display:none">⏸</button>
+    <button class="tbtn rst" onclick="resetTimer(${s.id})">↺</button>
+    <div class="sc-btns">
+      <button class="sc-btn" onclick="focusStop(${s.id})">🎯 View</button>
+      <button class="sc-btn" onclick="markDone(${s.id})">✓ Done</button>
+      ${s.photo?`<button class="sc-btn" onclick="showStopPhoto(stops.find(x=>x.id===${s.id}),0)" style="color:var(--accent);border-color:var(--accent)">📷</button>`:''}
+    </div>
+  </div>
+  ${s.photo?`<img class="sc-photo" src="${s.photo}" alt="Stop photo" onclick="showStopPhoto(stops.find(x=>x.id===${s.id}),0)">`:''}`;
+}
+
+function updCardProgress(s){
+  if(!s.dur_s)return;
+  const pct=Math.min((s.elapsed/s.dur_s)*100,110);
+  const bar=el(`scb-${s.id}`);
+  if(bar){bar.style.width=Math.min(pct,100)+'%';bar.style.background=pct<90?'var(--green)':pct<100?'var(--accent)':'var(--red)'}
+  const delta=s.elapsed-s.dur_s;
+  const dEl=el(`scd-${s.id}`);
+  if(dEl&&s.elapsed>0){dEl.className=`sc-delta ${delta<=0?'ok':delta<60?'warn':'over'}`;dEl.textContent=delta<=0?`−${fmtTime(-delta)} ahead`:`+${fmtTime(delta)} delay`}
+  const tdEl=el(`td-${s.id}`);
+  if(tdEl)tdEl.className=`sc-time-val${s.running?' running':s.elapsed>0?' paused':''}${delta>0&&s.elapsed>0?' over':''}`;
+}
+function updCardState(s){
+  const card=el(`sc-${s.id}`);if(!card)return;
+  card.className=`stop-card state-${s.state==='current'&&s.dur_s>0&&s.elapsed>s.dur_s?'over':s.state}`;
+  const num=el(`scnum-${s.id}`);if(num)num.className=`sc-num ${s.state==='waiting'?'waiting':s.state==='current'?'current':'done'}`;
+  const st=el(`scst-${s.id}`);
+  if(st){st.className=`sc-badge ${s.state}`;st.textContent={waiting:'Waiting',current:'At stop',done:'Done'}[s.state]}
+  stopMarkers[s.id]?.setIcon(mkStopIcon(s.id,s.state));
+}
+
+// ── TIMERS ─────────────────────────────────────────────
+function startTimer(id){
+  const s=stops.find(s=>s.id===id);if(!s||s.running)return;
+  s.running=true;s.state='current';
+  s.intervalId=setInterval(()=>{
+    s.elapsed++;
+    const d=el(`td-${id}`);if(d)d.textContent=fmtTime(s.elapsed);
+    updCardProgress(s);updTotals();if(hudPanelOpen)renderHudPanel();
+    // Auto-complete when planned time is reached
+    if(s.dur_s>0&&s.elapsed>=s.dur_s&&s.running){
+      clearInterval(s.intervalId);s.running=false;
+      setTimeout(()=>{
+        markDone(s.id);
+        closeStopPhoto();
+        if(hudPanelOpen)renderHudPanel();
+        showAlert('arrived','✓ Stop '+s.id+' — time complete. Proceed to next stop.');
+        speakText('Stop '+s.id+' time complete. Proceed to the next stop.');
+      },800);
+    }
+  },1000);
+  const d=el(`td-${id}`);if(d)d.className='sc-time-val running';
+  el(`tbgo-${id}`).style.display='none';el(`tbps-${id}`).style.display='';
+  updCardState(s);updSummaryBar();
+}
+function pauseTimer(id){
+  const s=stops.find(s=>s.id===id);if(!s||!s.running)return;
+  s.running=false;clearInterval(s.intervalId);
+  const d=el(`td-${id}`);if(d)d.className='sc-time-val paused';
+  el(`tbgo-${id}`).style.display='';el(`tbps-${id}`).style.display='none';
+}
+function resetTimer(id){
+  pauseTimer(id);const s=stops.find(s=>s.id===id);if(!s)return;
+  s.elapsed=0;s.state='waiting';
+  const d=el(`td-${id}`);if(d){d.textContent='00:00:00';d.className='sc-time-val'}
+  const bar=el(`scb-${id}`);if(bar)bar.style.width='0%';
+  const dEl=el(`scd-${id}`);if(dEl)dEl.textContent='';
+  updCardState(s);updTotals();updSummaryBar();
+}
+function markDone(id){
+  pauseTimer(id);const s=stops.find(s=>s.id===id);if(!s)return;
+  s.state='done';insideStop.delete(id);updCardState(s);updSummaryBar();
+  if(hudPanelOpen)renderHudPanel();
+}
+function startAllTimers(){stops.forEach(s=>{if(s.state!=='done')startTimer(s.id)})}
+function resetAllTimers(){stops.forEach(s=>resetTimer(s.id))}
+function updTotals(){
+  const real=stops.reduce((a,s)=>a+s.elapsed,0),prog=stops.reduce((a,s)=>a+s.dur_s,0);
+  el('h-real').textContent=fmtTime(real);
+  const d=real-prog;el('h-real').className=`tstat-v${d>120?' over':d>0?' warn':' ok'}`;
+}
+function updSummaryBar(){
+  const done=stops.filter(s=>s.state==='done').length,n=stops.length;
+  const real=stops.reduce((a,s)=>a+s.elapsed,0),prog=stops.reduce((a,s)=>a+s.dur_s,0);
+  const delta=real-prog,pct=prog?(real/prog)*100:0;
+  el('h-stops').textContent=`${done}/${n}`;
+  el('sb-done').textContent=`${done}/${n}`;
+  el('sb-prog').textContent=prog?fmtTime(prog):'—';
+  el('sb-rlbl').textContent=`Actual: ${fmtTime(real)}`;
+  const sfill=el('sb-fill');
+  if(sfill){sfill.style.width=Math.min(pct,100)+'%';sfill.style.background=pct<90?'var(--green)':pct<100?'var(--accent)':'var(--red)';}
+  if(prog&&real>0){
+    const dv=el('sb-delta'),lv=el('sb-dlbl');
+    dv.className=`sb-val ${delta<=0?'ok':delta<120?'warn':'over'}`;
+    dv.textContent=delta<=0?'−'+fmtTime(-delta):'+'+fmtTime(delta);
+    lv.textContent=delta<=0?'ahead':'delay';
+    lv.style.color=delta<=0?'var(--green)':delta<120?'var(--accent)':'var(--red)';
+  }
+}
+
+// ── NAVIGATION ─────────────────────────────────────────
+function startNav(){
+  if(navActive)return;
+  if(!navigator.geolocation){alert('Geolocation not available.');return}
+  navActive=true;
+  el('btn-nav').style.display='none';el('btn-nav2').style.display='none';
+  el('btn-stop').style.display='';el('btn-nav3').style.display='none';el('btn-stop3').style.display='';
+  el('nav-hud').classList.add('on');el('hud-toggle').classList.add('on');
+  el('sum-bar').classList.add('on');
+  shState='hidden';applySheet();
+  requestWakeLock();
+  el('hud-voice').style.display='flex';el('hud-voice').textContent='🔊';voiceOn=true;
+  setGPS('wait','Waiting for GPS...');
+  watchId=navigator.geolocation.watchPosition(onGPS,onGPSErr,{enableHighAccuracy:true,maximumAge:1000,timeout:20000});
+}
+function stopNav(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null}
+  navActive=false;
+  el('btn-nav').style.display='';el('btn-nav2').style.display='';
+  el('btn-stop').style.display='none';el('btn-nav3').style.display='';el('btn-stop3').style.display='none';
+  el('nav-hud').classList.remove('on');el('hud-toggle').classList.remove('on');el('hud-voice').style.display='none';
+  if(window.speechSynthesis)window.speechSynthesis.cancel();
+  el('hud-sp').classList.remove('on');hudPanelOpen=false;
+  el('sum-bar').classList.remove('on');
+  shState='mid';applySheet();
+  if(!isRec) releaseWakeLock();
+  setGPS('wait','GPS stopped');
+}
+
+function onGPS(pos){
+  const{latitude:lat,longitude:lng,accuracy,altitude,speed,heading}=pos.coords;
+  currentPos={lat,lng};
+  if(heading!=null&&!isNaN(heading)) currentHeading=heading;
+
+  // Speed: prefer GPS value, fallback to distance-based calculation
+  const calcSpd=calcSpeedFromPoints(lat,lng);
+  const spdKmh=speed!=null?speed*3.6:calcSpd;
+  lastGPSForSpeed={lat,lng,t:Date.now()};
+  el('hud-spd').textContent=spdKmh!=null?Math.round(spdKmh):'—';
+  setGPS('active',`Prec: ${accuracy?.toFixed(0)||'?'} m`);
+
+  // Compass
+  if(currentHeading!=null){
+    const dirs=['N','NE','L','SE','S','SO','O','NO'];
+    el('hud-compass').textContent=['↑','↗','→','↘','↓','↙','←','↖'][Math.round(((currentHeading%360)+360)%360/45)%8];
+    el('hud-cdeg').textContent=dirs[Math.round(((currentHeading%360)+360)%360/45)%8];
+  }
+
+  // Position marker
+  const hasHdg=currentHeading!=null&&!isNaN(currentHeading);
+  const mHtml=hasHdg
+    ?`<div style="font-size:28px;line-height:1;transform:rotate(${currentHeading}deg);filter:drop-shadow(0 0 5px rgba(88,166,255,.8))">▲</div>`
+    :`<div style="width:14px;height:14px;background:var(--blue);border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 0 rgba(88,166,255,.6);animation:pulse 2s infinite"></div>`;
+  const icon=L.divIcon({html:mHtml,className:'',iconAnchor:[hasHdg?14:7,hasHdg?14:7]});
+  if(!posMarker) posMarker=L.marker([lat,lng],{icon,zIndexOffset:1000}).addTo(map);
+  else{posMarker.setLatLng([lat,lng]);posMarker.setIcon(icon)}
+
+  if(accCircle)map.removeLayer(accCircle);
+  accCircle=L.circle([lat,lng],{radius:accuracy,color:'#58a6ff',fillColor:'#58a6ff',fillOpacity:.07,weight:1,opacity:.3}).addTo(map);
+
+  if(+el('rng-follow').value===1){
+    const zoom=+el('rng-zoom').value;
+    if((navActive||isRec)&&currentHeading!=null&&map.setBearing){
+      // Heading-up: rotate map to put direction of travel at top
+      setMapBearing(-currentHeading); // negative = rotate map opposite to heading
+      // Offset center slightly behind vehicle (show more route ahead)
+      const hr=currentHeading*Math.PI/180;
+      const offM=40; // metres behind
+      const dLat=Math.cos(hr+Math.PI)*offM/111320;
+      const dLng=Math.sin(hr+Math.PI)*offM/(111320*Math.cos(lat*Math.PI/180));
+      map.setView([lat+dLat,lng+dLng],zoom,{animate:true,duration:.4,noMoveStart:true});
+    }else{
+      setMapBearing(0); // north-up when stopped
+      map.setView([lat,lng],zoom,{animate:true,duration:.5});
+    }
+  }
+
+  // Route remaining + turn-by-turn
+  const{nearIdx,distFromStart}=nearestRoutePoint(lat,lng);
+  updRouteRemaining(nearIdx,distFromStart);
+  updInstruction(nearIdx,distFromStart);
+  // Announce arrival at destination
+  if(routePts.length&&nearIdx>=routePts.length-3&&lastVoiceKey!=='destination'){
+    lastVoiceKey='destination';speakText('You have arrived at your destination');
+  }
+
+  // Arrival check
+  checkArrival(lat,lng);
+
+  // Recording stop detection
+  if(isRec){
+    const velThreshold=+el('rng-recvel').value;
+    const durThreshold=+el('rng-recdur').value;
+    // spdKmh=null means GPS didn't report speed — assume 0 (stopped)
+    const velKmh=spdKmh!=null?spdKmh:0;
+
+    if(velKmh<velThreshold){
+      if(!recStopCandidate){
+        recStopCandidate={lat,lng,t:Date.now()};
+        el('rec-sc').textContent='🔴 Slowing down...';
+      } else {
+        const stopDur=Math.round((Date.now()-recStopCandidate.t)/1000);
+        // Show live countdown immediately
+        if(!recStopCandidate.marked){
+          const remaining=Math.max(0,durThreshold-stopDur);
+          el('rec-sc').textContent=remaining>0
+            ?`🔴 Stopped: ${stopDur}s / ${durThreshold}s (${remaining}s to register)`
+            :'📍 Registering stop...';
+        }
+        if(stopDur>=durThreshold&&!recStopCandidate.marked){
+          recStopCandidate.marked=true;
+          // Mark this as a stop waypoint
+          const stopT=recStopCandidate.t; // when vehicle first stopped
+          const stopEntry={lat,lng,t:Date.now(),dur_s:0,startT:stopT};
+          recStops.push(stopEntry);
+          // Visual marker on map
+          const sNum=recStops.length;
+          const stopIcon=L.divIcon({
+            html:`<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+              <div style="background:#f85149;color:#fff;font-size:11px;font-weight:700;font-family:monospace;padding:2px 7px;border-radius:10px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.6)">⏸ P${sNum}</div>
+              <div style="width:12px;height:12px;background:#f85149;border:2px solid #fff;border-radius:50%;box-shadow:0 0 8px #f85149"></div>
+            </div>`,
+            className:'',iconAnchor:[24,20]
+          });
+          L.marker([lat,lng],{icon:stopIcon,zIndexOffset:900}).addTo(map);
+          el('rec-sc').textContent=`${recStops.length} stop${recStops.length>1?'s':''} detected`;
+          // Prompt camera for photo of this stop
+          pendingPhotoStopIdx=recStops.length-1;
+          el('cam-stop-num').textContent=recStops.length;
+          el('cam-prompt').classList.add('on');
+          // Auto-dismiss prompt after 15s if user ignores
+          setTimeout(()=>{if(el('cam-prompt').classList.contains('on'))skipPhoto();},15000);
+        }
+      }
+    } else {
+      // Leaving a stop — record duration
+      if(recStopCandidate?.marked&&recStops.length>0){
+        const lastStop=recStops[recStops.length-1];
+        lastStop.dur_s=Math.round((Date.now()-lastStop.startT)/1000);
+      }
+      if(recStopCandidate&&!recStopCandidate.marked){
+        // Was slowing but didn't reach threshold — reset counter
+        el('rec-sc').textContent=`${recStops.length} stop${recStops.length>1?'s':''} detected${recStops.filter(s=>s.photo).length?' ('+recStops.filter(s=>s.photo).length+' with photo)':''}`;
+      }
+      recStopCandidate=null;
+    }
+
+    recPoints.push({lat,lng,t:Date.now(),speed:speed,alt:altitude});
+    const recDist=calcDistRaw(recPoints);
+    el('rec-stats').textContent=`${recPoints.length} pts · ${recDist.toFixed(2)} km`;
+
+    // Draw live track
+    if(!recLayer){recLayer=L.polyline([[lat,lng]],{color:'#58a6ff',weight:3,opacity:.85}).addTo(map)}
+    else recLayer.addLatLng([lat,lng]);
+  }
+}
+function onGPSErr(err){
+  const m={1:'Permissão negada',2:'Posição indisponível',3:'Timeout GPS'};
+  setGPS('error',m[err.code]||'Erro GPS');
+}
+
+// ── ROUTE REMAINING ────────────────────────────────────
+function nearestRoutePoint(lat,lng){
+  if(!routePts.length||!routeCumDist.length)return{nearIdx:0,distFromStart:0};
+
+  // Windowed search: look AHEAD of last known position only.
+  // This prevents confusing a street driven in one direction with
+  // the same street driven in the opposite direction later in the route.
+  const AHEAD=500;   // wider window — handles long segments between stops
+  const BACK=3;      // minimal backtrack — prevents bidirectional confusion
+
+  const from=Math.max(0, lastRouteIdx-BACK);
+  const to  =Math.min(routePts.length-1, lastRouteIdx+AHEAD);
+
+  let minIdx=from, minDist=Infinity;
+  for(let i=from;i<=to;i++){
+    const d=haversine(lat,lng,routePts[i].lat,routePts[i].lon);
+    if(d<minDist){minDist=d;minIdx=i;}
+  }
+
+  // Only advance, never jump backward by more than BACK
+  lastRouteIdx=Math.max(from, minIdx);
+  return{nearIdx:lastRouteIdx, distFromStart:routeCumDist[lastRouteIdx]};
+}
+
+function findNextStopRouteIdx(fromIdx){
+  const ns=stops.find(s=>s.state!=='done');
+  if(!ns||!routePts.length)return routePts.length-1;
+  let best=fromIdx,bestD=Infinity;
+  const end=Math.min(routePts.length,fromIdx+600);
+  for(let i=fromIdx;i<end;i++){
+    const d=haversine(routePts[i].lat,routePts[i].lon,ns.lat,ns.lng);
+    if(d<bestD){bestD=d;best=i;}
+  }
+  return best;
+}
+
+function updRouteRemaining(nearIdx,distFromStart){
+  if(!routePts.length)return;
+  const done=routePts.slice(0,nearIdx+1).map(p=>[p.lat,p.lon]);
+  // Segmented: bright = to next stop; dim dashed = rest of route
+  const segEnd=findNextStopRouteIdx(nearIdx);
+  const segment=routePts.slice(nearIdx,segEnd+1).map(p=>[p.lat,p.lon]);
+  const remain =routePts.slice(segEnd).map(p=>[p.lat,p.lon]);
+  routeDoneLayer.setLatLngs(done.length>1?done:[]);
+  routeAheadLayer.setLatLngs(segment.length>1?segment:done.length?[done[done.length-1]]:[] );
+  if(routeRemainLayer)routeRemainLayer.setLatLngs(remain.length>1?remain:[]);
+
+function updInstruction(nearIdx,distFromStart){
+  if(!currentPos)return;
+  const{dist,icon,label,detail,cls,type}=getNextManeuver(nearIdx,distFromStart);
+  const distM=dist;
+
+  // ── Arrow icon ──
+  el('hud-icon-arrow').textContent=icon;
+  el('hud-icon').className=`hud-instr-icon ${cls}`;
+
+  // Short label under icon
+  const iconLabels={straight:'STRAIGHT',right:'RIGHT',left:'LEFT',sr:'SLIGHT RT',
+    sl:'SLIGHT LT',uturn:'U-TURN',stop:'STOP',arrive:'ARRIVE'};
+  el('hud-icon-lbl').textContent=iconLabels[type]||'';
+
+  // ── Distance with urgency color ──
+  const distEl=el('hud-dist');
+  distEl.textContent=distM>0?fmtDist(distM):'';
+  distEl.className='hud-instr-dist '+(distM>200?'far':distM>50?'medium':'close');
+
+  el('hud-action').textContent=label;
+  el('hud-detail').textContent='';
+
+  // ── Next-after-next preview ──
+  const upcoming=maneuvers.filter(m=>m.idx>nearIdx&&m.distFromStart>distFromStart);
+  const nextNext=upcoming[1]; // [0] is current next, [1] is the one after
+  const previewEl=el('hud-preview');
+  if(nextNext&&nextNext.type!=='arrive'){
+    const d2=haversine(currentPos.lat,currentPos.lng,nextNext.lat,nextNext.lon)*1000;
+    previewEl.textContent=`then ${nextNext.icon} ${nextNext.label} in ${fmtDist(d2)}`;
+    previewEl.classList.add('visible');
+  } else {
+    previewEl.classList.remove('visible');
+  }
+
+  // ── Voice guidance ──
+  if(distM>0&&distM<600) maybeSpeak(type||cls,label,distM);
+
+  // Update peek bar
+  el('peek-icon').textContent=icon;
+  el('peek-name').textContent=label;
+  el('peek-sub').textContent=dist>0?fmtDist(dist):'';
+  el('peek-dist').textContent='';
+}
+
+// ── ARRIVAL / DEPARTURE ────────────────────────────────
+function checkArrival(lat,lng){
+  const radius=+el('rng-radius').value;
+  const autoStart=+el('rng-auto').value===1;
+  const autoStop=+el('rng-autostop').value===1;
+
+  // ── Find the single CLOSEST non-done stop for photo preview ──
+  // (forEach would call showStopPhoto for every stop in range,
+  //  showing the LAST one instead of the nearest/correct one)
+  let nearestStop=null, nearestDist=Infinity;
+  stops.forEach(s=>{
+    if(s.state==='done')return;
+    const d=haversine(lat,lng,s.lat,s.lng)*1000;
+    if(d<nearestDist){nearestDist=d;nearestStop=s;}
+  });
+
+  // Pre-show photo + announce events of the nearest upcoming stop at 200m
+  if(nearestStop&&nearestDist<=200&&nearestDist>radius){
+    // Photo preview
+    if(nearestStop.photo&&nearestStop.photo.length>10&&photoPreviewStopId!==nearestStop.id){
+      showStopPhoto(nearestStop,nearestDist);
+    }
+    // Announce events only once per stop approach
+    const evtKey='evt_ann_'+nearestStop.id;
+    if(nearestStop.events?.length&&lastVoiceKey!==evtKey){
+      lastVoiceKey=evtKey;
+      const msgs=[];
+      if(nearestStop.events.includes('openDoor'))msgs.push('open doors');
+      if(nearestStop.events.includes('kneeling'))msgs.push('kneeling');
+      if(msgs.length)speakText(`Stop ${nearestStop.id}: ${msgs.join(' and ')} required`);
+    }
+  }
+
+  // ── Arrival / departure checks ────────────────────────────
+  // Speed-aware arrival radius: when slowing down near stop, expand detection zone
+  const effectiveRadius=Math.max(radius,
+    (currentPos&&spdKmh!=null&&spdKmh<20)?radius*1.8:radius
+  );
+
+  stops.forEach(s=>{
+    if(s.state==='done')return;
+    const distM=haversine(lat,lng,s.lat,s.lng)*1000;
+
+    if(distM<=effectiveRadius&&!insideStop.has(s.id)){
+      insideStop.add(s.id);
+      showAlert('arrived',`📍 ${s.name}${s.dur_s?' · '+fmtTime(s.dur_s):''}`);
+      // Only show photo for the NEAREST stop — not every stop within radius.
+      // (multiple stops may be in radius simultaneously; last forEach call would win)
+      if(s.id===nearestStop?.id){
+        if(s.photo&&s.photo.length>10) showStopPhoto(s,0);
+        else closeStopPhoto();
+      }
+      s.state='current';updCardState(s);
+      if(autoStart&&!s.running)startTimer(s.id);
+      speakText(`Arrived at stop ${s.id}${s.dur_s?', planned '+fmtTime(s.dur_s):''}`);
+      lastVoiceKey='';
+      el(`sc-${s.id}`)?.scrollIntoView({behavior:'smooth',block:'nearest'});
+      if(!hudPanelOpen) toggleHudPanel();
+      else renderHudPanel();
+
+    } else if(distM>radius*1.3&&insideStop.has(s.id)){
+      insideStop.delete(s.id);
+      if(autoStop&&s.running){
+        pauseTimer(s.id);markDone(s.id);
+        showAlert('departed',`✓ ${s.name} · ${fmtTime(s.elapsed)}`);
+        if(photoPreviewStopId===s.id)closeStopPhoto();
+      }
+    }
+  });
+}
+function showAlert(type,msg){
+  const a=el('arriving');a.className=`arriving ${type}`;a.textContent=msg;a.style.display='block';
+  clearTimeout(arrivingTmr);arrivingTmr=setTimeout(()=>{a.style.display='none'},4000);
+}
+
+// ── RECORDING ──────────────────────────────────────────
+function toggleRec(){if(!isRec)startRec();else stopRec()}
+
+function startRec(){
+  if(!navigator.geolocation){alert('Geolocation not available.');return}
+  // ← Clear existing GPX map layers before recording
+  clearMapLayers();
+  stops=[];insideStop.clear();el('stops-list').innerHTML='';el('stops-badge').textContent='';
+  routePts=[];maneuvers=[];totalRouteDist=0;
+
+  isRec=true;recPoints=[];recStops=[];recStopCandidate=null;
+  el('rec-ind').classList.add('on');
+  el('btn-rec').className='btn rec-on';el('btn-rec').textContent='⏹ Recording';
+  el('btn-nav').disabled=true;
+
+  if(watchId===null){
+    watchId=navigator.geolocation.watchPosition(onGPS,onGPSErr,{enableHighAccuracy:true,maximumAge:1000,timeout:20000});
+  }
+  requestWakeLock();
+  setGPS('active','Recording route...');
+}
+
+function stopRec(){
+  isRec=false;
+  // Close open stop if any
+  if(recStopCandidate?.marked&&recStops.length>0){
+    recStops[recStops.length-1].dur_s=Math.round((Date.now()-recStops[recStops.length-1].startT)/1000);
+  }
+  recStopCandidate=null;
+  el('rec-ind').classList.remove('on');
+  el('btn-rec').className='btn rec';el('btn-rec').textContent='⏺ Rec';
+  el('btn-nav').disabled=false;
+  if(!navActive) releaseWakeLock();
+
+  if(!navActive&&watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null}
+
+  if(recPoints.length<2){alert('Route too short to save.');return}
+  const dist=calcDistRaw(recPoints);
+  const name=`Route ${new Date().toLocaleDateString('en-GB')} ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`;
+  const rec={name,points:[...recPoints],stops:[...recStops],date:new Date(),dist};
+  savedRecs.push(rec);
+  const idx=savedRecs.length-1;
+  renderRecCard(rec,idx);
+  el('rec-badge').textContent=` (${savedRecs.length})`;
+  el('rec-empty').style.display='none';
+  saveRecordings(); // persist to localStorage
+  switchTab('gravadas');
+}
+
+function renderRecCard(rec,idx){
+  if(!rec)return; // safety guard
+  const list=el('rec-list');
+  const card=document.createElement('div');
+  card.className='rec-card';card.id=`rcard-${idx}`;
+  const stopsInfo=rec.stops.length?`· ${rec.stops.length} stop${rec.stops.length>1?'s':''} detected`:' · no stops detected';
+  card.innerHTML=`
+    <div class="rec-card-head">
+      <span style="font-size:20px">🛤️</span>
+      <div>
+        <div class="rec-card-name">${rec.name}</div>
+        <div class="rec-card-meta">${(rec.dist??0).toFixed(2)} km · ${(rec.points??[]).length} pts ${stopsInfo}</div>
+      </div>
+    </div>
+    <div class="rec-card-btns">
+      <button class="btn go"      style="flex:1;font-size:11px;padding:8px 4px" onclick="loadRec(${idx})">📂 Load</button>
+      <button class="btn primary" style="flex:1;font-size:11px;padding:8px 4px" onclick="dlRecGPX(${idx})">↓ GPX</button>
+      <button class="btn"         style="font-size:11px;padding:8px 8px;border-color:var(--red);color:var(--red)" onclick="delRec(${idx})">✕</button>
+    </div>`;
+  list.insertBefore(card,list.firstChild);
+}
+
+function loadRec(idx){
+  const rec=savedRecs[idx];
+  if(!rec){alert('Recording not found. It may have been lost after a page reload.\nRecord a new route.');return;}
+
+  try{
+    clearMapLayers();
+
+    // ── Route track ────────────────────────────────────
+    // Support both {lat,lng} (GPS recorded) and {lat,lon} (GPX parsed)
+    const pts=rec.points.map(p=>({lat:+p.lat,lon:+(p.lng??p.lon)}))
+                        .filter(p=>!isNaN(p.lat)&&!isNaN(p.lon));
+    if(pts.length<2){alert('Recorded route has fewer than 2 valid points.');return;}
+
+    routePts=pts;
+    buildCumDist(routePts);
+    totalRouteDist=routeCumDist[routeCumDist.length-1]||rec.dist||0;
+    lastRouteIdx=0;
+
+    const ll=pts.map(p=>[p.lat,p.lon]);
+    routeLayer    =L.polyline(ll,{color:'rgba(88,166,255,.25)',weight:6}).addTo(map);
+    routeAheadLayer=L.polyline(ll,{color:'#58a6ff',weight:4}).addTo(map);
+    routeDoneLayer =L.polyline([],{color:'#444',weight:4}).addTo(map);
+
+    // ── Stops ─────────────────────────────────────────
+    stops=[];insideStop.clear();stopMarkers={};
+    const sl=el('stops-list');if(sl)sl.innerHTML='';
+
+    (rec.stops||[]).forEach((s,i)=>{
+      if(s==null||isNaN(+s.lat)||isNaN(+s.lng))return; // skip invalid
+      const id=i+1;
+      const hasPhoto=!!(s.photo&&s.photo.length>10);
+      const lbl=hasPhoto?`📷 P${id}`:`⏸ P${id}`;
+      const icon=L.divIcon({
+        html:`<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+          <div style="background:#f85149;color:#fff;font-size:11px;font-weight:700;
+            font-family:monospace;padding:2px 7px;border-radius:10px;
+            white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.6)">${lbl}</div>
+          <div style="width:12px;height:12px;background:#f85149;border:2px solid #fff;
+            border-radius:50%;box-shadow:0 0 6px #f85149"></div></div>`,
+        className:'',iconAnchor:[24,20]
+      });
+      const m=L.marker([+s.lat,+s.lng],{icon,zIndexOffset:900}).addTo(map);
+      const navStop={id,name:`Stop ${id}`,lat:+s.lat,lng:+s.lng,
+        dur_s:s.dur_s||0,elapsed:0,running:false,intervalId:null,state:'waiting',
+        photo:s.photo||null};
+      stops.push(navStop);
+      stopMarkers[id]=m;
+      if(sl) renderCard(navStop);
+    });
+
+    // ── Update all UI stats (safe — guard every element) ─
+    const totalProg=stops.reduce((a,s)=>a+(s.dur_s||0),0);
+    const setT=(id,v)=>{const e=el(id);if(e)e.textContent=v;};
+    const setS=(id,v)=>{const e=el(id);if(e)e.style.display=v;};
+    setT('h-dist',totalRouteDist>=1?totalRouteDist.toFixed(1)+'km':(totalRouteDist*1000).toFixed(0)+'m');
+    setT('h-stops',`0/${stops.length}`);
+    setT('h-prog',totalProg?fmtTime(totalProg):'—');
+    setT('h-real','00:00:00');
+    setT('stops-badge',stops.length?` (${stops.length})`:'');
+    setS('stops-empty',stops.length?'none':'');
+
+    maneuvers=buildManeuvers(routePts);
+    try{
+      const b=routeLayer.getBounds();
+      if(b&&b.isValid()) map.fitBounds(b,{padding:[20,20]});
+      else map.setView([pts[0].lat,pts[0].lon],15);
+    }catch(fe){map.setView([pts[0].lat,pts[0].lon],15);}
+    el('btn-nav').disabled=false;
+    try{if(el('btn-nav2'))el('btn-nav2').disabled=false;}catch(e){}
+    el('peek-icon').textContent='🛤️';
+    el('peek-name').textContent=rec.name;
+    el('peek-sub').textContent=`${(rec.dist||0).toFixed(2)} km · ${stops.length} stops · tap ▶ Nav to start`;
+    el('no-route') && (el('no-route').style.display='none');
+    el('route-details') && (el('route-details').style.display='flex');
+    updSummaryBar();
+    switchTab('rota');shState='mid';applySheet();
+  }catch(err){
+    console.error('loadRec failed:',err);
+    // Show which step failed + the error
+    alert('Error loading recording (please report):\n'+err.message+'\n\nHint: try deleting the recording and recording again.');
+  }
+}
+
+function dlRecGPX(idx){
+  const rec=savedRecs[idx];if(!rec)return;
+  let xml=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="GPX Navigator Pro">\n<metadata><name>${rec.name}</name><time>${(rec.date instanceof Date?rec.date:new Date(rec.date)).toISOString()}</time></metadata>\n`;
+  // Waypoints (detected stops with duration)
+  rec.stops.forEach((s,i)=>{
+    xml+=`<wpt lat="${s.lat.toFixed(8)}" lon="${s.lng.toFixed(8)}">\n`;
+    xml+=`  <name>Stop ${i+1}</name>\n`;
+    xml+=`  <desc>Duration: ${s.dur_s?fmtTime(s.dur_s):'unknown'}</desc>\n`;
+    xml+=`  <cmt>duracao_s=${s.dur_s||0}</cmt>\n`;
+    xml+=`  <time>${new Date(s.t).toISOString()}</time>\n`;
+    xml+=`</wpt>\n`;
+  });
+  // Track
+  xml+=`<trk><name>${rec.name}</name><trkseg>\n`;
+  rec.points.forEach(p=>{
+    xml+=`<trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}">`;
+    if(p.alt!=null)xml+=`<ele>${p.alt.toFixed(1)}</ele>`;
+    xml+=`<time>${new Date(p.t).toISOString()}</time>`;
+    if(p.speed!=null)xml+=`<extensions><speed>${(p.speed*3.6).toFixed(2)}</speed></extensions>`;
+    xml+=`</trkpt>\n`;
+  });
+  xml+=`</trkseg></trk>\n</gpx>`;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([xml],{type:'application/gpx+xml'}));
+  a.download=rec.name.replace(/[^a-z0-9]/gi,'_')+'.gpx';a.click();
+}
+
+function delRec(idx){
+  savedRecs[idx]=null;el(`rcard-${idx}`)?.remove();
+  const n=savedRecs.filter(Boolean).length;
+  el('rec-badge').textContent=n?` (${n})`:'';
+  if(!n)el('rec-empty').style.display='';
+}
+
+// ── MISC ───────────────────────────────────────────────
+function focusStop(id){
+  const s=stops.find(s=>s.id===id);if(!s)return;
+  map.setView([s.lat,s.lng],17,{animate:true});stopMarkers[id]?.openPopup();
+  el('hud-sp').classList.remove('on');hudPanelOpen=false;
+  shState='mid';applySheet();
+}
+function exportCSV(){
+  if(!stops.length){alert('No stops to export.');return}
+  const h='ID,Name,Lat,Lon,Planned,Actual,Delta,Status';
+  const rows=stops.map(s=>{const d=s.elapsed-s.dur_s;return`${s.id},"${s.name}",${s.lat.toFixed(6)},${s.lng.toFixed(6)},${fmtTime(s.dur_s)},${fmtTime(s.elapsed)},${s.dur_s?(d>=0?'+':'-')+fmtTime(Math.abs(d)):'—'},${s.state}`});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([[h,...rows].join('\n')],{type:'text/csv'}));
+  a.download='stops_report.csv';a.click();
+}
+
+// ── MATH ───────────────────────────────────────────────
+function haversine(la1,lo1,la2,lo2){
+  const R=6371,r=Math.PI/180;
+  const dLat=(la2-la1)*r,dLon=(lo2-lo1)*r;
+  const a=Math.sin(dLat/2)**2+Math.cos(la1*r)*Math.cos(la2*r)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function brng(la1,lo1,la2,lo2){
+  const r=Math.PI/180,dLon=(lo2-lo1)*r;
+  return Math.atan2(Math.sin(dLon)*Math.cos(la2*r),Math.cos(la1*r)*Math.sin(la2*r)-Math.sin(la1*r)*Math.cos(la2*r)*Math.cos(dLon))*180/Math.PI;
+}
+function calcDist(pts){let t=0;for(let i=1;i<pts.length;i++)t+=haversine(pts[i-1].lat,pts[i-1].lon,pts[i].lat,pts[i].lon);return t}
+function calcDistRaw(pts){let t=0;for(let i=1;i<pts.length;i++)t+=haversine(pts[i-1].lat,pts[i-1].lng,pts[i].lat,pts[i].lng);return t}
+function fmtTime(s){if(!s||isNaN(s))return'00:00:00';s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;return[h,m,sc].map(v=>String(v).padStart(2,'0')).join(':')}
+function fmtDurMs(ms){return fmtTime(Math.floor(ms/1000))}
+function el(id){return document.getElementById(id)}
+function setGPS(state,msg){el('gps-dot').className='gps-dot '+state;el('gps-text').textContent=msg}
+
+// Drag & drop
+map.getContainer().addEventListener('dragover',e=>e.preventDefault());
+map.getContainer().addEventListener('drop',e=>{
+  e.preventDefault();const f=e.dataTransfer.files[0];
+  if(f?.name.endsWith('.gpx')){const r=new FileReader();r.onload=ev=>parseGPX(ev.target.result,f.name);r.readAsText(f)}
+});
 </script>
 </body>
 </html>
