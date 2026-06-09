@@ -689,8 +689,7 @@ function hideInstall(){el('install-banner').style.display='none'}
 window.addEventListener('appinstalled',hideInstall);
 
 // ── STATE ──────────────────────────────────────────────
-let routeRemainLayer = null;
-let map, routeLayer, routeDoneLayer, routeAheadLayer, recLayer;
+let map, routeLayer, routeDoneLayer, routeAheadLayer, routeRemainLayer, recLayer;
 let posMarker, accCircle;
 let stops=[], stopMarkers={};
 let routePts=[];          // [{lat,lon}] full route
@@ -897,19 +896,6 @@ function maybeSpeak(manType, label, distM){
 
 // ── GPS speed fallback (Android often returns speed=null when stopped) ──
 let lastGPSForSpeed=null;
-let _sBuf=[],_hBuf=[];
-function smoothSpeed(raw){
-  if(raw==null||raw>200) return _sBuf.length?_sBuf[_sBuf.length-1]:0;
-  _sBuf.push(raw); if(_sBuf.length>5)_sBuf.shift();
-  return _sBuf.reduce((a,b)=>a+b,0)/_sBuf.length;
-}
-function smoothHeading(raw){
-  if(raw==null||isNaN(raw)) return currentHeading;
-  _hBuf.push(raw); if(_hBuf.length>4)_hBuf.shift();
-  const s=_hBuf.reduce((a,h)=>a+Math.sin(h*Math.PI/180),0);
-  const c=_hBuf.reduce((a,h)=>a+Math.cos(h*Math.PI/180),0);
-  return((Math.atan2(s,c)*180/Math.PI)+360)%360;
-}
 function calcSpeedFromPoints(lat,lng){
   const now=Date.now();
   if(!lastGPSForSpeed) return null;
@@ -919,27 +905,19 @@ function calcSpeedFromPoints(lat,lng){
 }
 
 // ── MAP ────────────────────────────────────────────────
-let _lastBearing=0;
-function setMapBearing(deg){
-  const pane=map.getContainer().querySelector('.leaflet-map-pane');
-  if(!pane)return;
-  try{
-    const sz=map.getSize();
-    const mx=new DOMMatrix(window.getComputedStyle(pane).transform);
+let _lb=0;
+function setMapBearing(d){
+  const p=map.getContainer().querySelector('.leaflet-map-pane');
+  if(!p)return;
+  try{const sz=map.getSize(),mx=new DOMMatrix(getComputedStyle(p).transform);
     if(isNaN(mx.m41))return;
-    const tx=mx.m41, ty=mx.m42;
-    const ox=sz.x/2-tx, oy=sz.y/2-ty;
-    pane.style.transformOrigin=`${ox}px ${oy}px`;
-    pane.style.transform=`translate(${tx}px,${ty}px) rotate(${deg}deg)`;
-    _lastBearing=deg;
-  }catch(e){ _lastBearing=0; }
-}
+    p.style.transformOrigin=`${sz.x/2-mx.m41}px ${sz.y/2-mx.m42}px`;
+    p.style.transform=`translate(${mx.m41}px,${mx.m42}px) rotate(${d}deg)`;
+    _lb=d;}catch(e){_lb=0;}}
 map=L.map('map',{center:[-15,-50],zoom:5,zoomControl:false,tap:true,rotate:true,rotateControl:false,touchRotate:false,shiftKeyRotate:false});
 loadStoredRecordings(); // restore recordings after page reload
 L.control.zoom({position:'bottomleft'}).addTo(map);
-map.on('move zoom',()=>{
-  if(_lastBearing!==0) requestAnimationFrame(()=>setMapBearing(_lastBearing));
-});
+map.on('move zoom',()=>{if(_lb)requestAnimationFrame(()=>setMapBearing(_lb));});
 // Map tile layers — Voyager default (readable), Dark for night
 const TILES={
   day: {
@@ -963,7 +941,7 @@ function toggleMapStyle(){
     attribution:'&copy; OpenStreetMap &copy; CARTO',subdomains:'abcd',maxZoom:20
   }).addTo(map);
   // TileLayer goes under other layers — bring route/markers to front
-  [routeLayer,routeDoneLayer,routeAheadLayer,recLayer].forEach(l=>l?.bringToFront());
+  [routeLayer,routeDoneLayer,routeAheadLayer,routeRemainLayer,recLayer].forEach(l=>l?.bringToFront());
   Object.values(stopMarkers).forEach(m=>m?.bringToFront?.());
   const btn=el('map-style-btn');
   if(btn) btn.textContent=TILES[currentTile==='day'?'night':'day'].label;
@@ -973,8 +951,6 @@ function toggleMapStyle(){
 let shState='mid',tsY=0;
 function toggleSheet(){shState=shState==='expanded'?'mid':'expanded';applySheet()}
 function applySheet(){const s=el('sheet');s.classList.remove('expanded','mid','hidden');s.classList.add(shState)}
-  setTimeout(()=>{try{map.invalidateSize();}catch(e){}},300);
-
 function shTS(e){tsY=e.touches[0]?.clientY||0}
 function shTM(e){if(e.target.closest('.stops-list,.rec-list,.nav-section')&&shState==='expanded')return;e.preventDefault()}
 function shTE(e){const dy=(e.changedTouches[0]?.clientY||tsY)-tsY;if(Math.abs(dy)<25)return;shState=dy>0?'mid':'expanded';applySheet()}
@@ -996,14 +972,13 @@ function toggleHudPanel(){
 }
 function renderHudPanel(){
   const c=el('hud-sp-list');c.innerHTML='';
-  const current=stops.find(s=>s.state==='current');
-  const next=stops.find(s=>s.state==='waiting');
-  const total=stops.length, done=stops.filter(s=>s.state==='done').length;
-  const hdr=document.createElement('div');
-  hdr.style='padding:5px 12px;font-size:10px;font-family:var(--mono);color:var(--muted);border-bottom:1px solid var(--border)';
-  hdr.textContent=`Stop ${done+1} of ${total}`;
-  c.appendChild(hdr);
-  [current,next].filter(Boolean).forEach(s=>{
+  const _cur=stops.find(s=>s.state==='current');
+  const _nxt=stops.find(s=>s.state==='waiting');
+  const _hdr=document.createElement('div');
+  _hdr.style='padding:5px 12px;font-size:10px;font-family:var(--mono);color:var(--muted);border-bottom:1px solid var(--border)';
+  _hdr.textContent=`Stop ${stops.filter(s=>s.state==='done').length+1} of ${stops.length}`;
+  c.appendChild(_hdr);
+  [_cur,_nxt].filter(Boolean).forEach(s=>{
     const row=document.createElement('div');
     const delta=s.elapsed-(s.dur_s||0);
     const timerTxt=s.elapsed>0||s.state==='current'?fmtTime(s.elapsed):'—';
@@ -1163,7 +1138,7 @@ function parseGPX(xml,filename){
   const ll=pts.map(p=>[p.lat,p.lon]);
   routeLayer    =L.polyline(ll,{color:'rgba(240,165,0,.2)',weight:6}).addTo(map);
   routeAheadLayer =L.polyline(ll,{color:'#f0a500',weight:5,opacity:.95}).addTo(map);
-  routeRemainLayer=L.polyline([],{color:'rgba(240,165,0,.35)',weight:3,dashArray:'7 5'}).addTo(map);
+  routeRemainLayer=L.polyline([],{color:'rgba(240,165,0,.3)',weight:3,dashArray:'7 5'}).addTo(map);
   routeDoneLayer  =L.polyline([],{color:'#555',weight:4,opacity:.7}).addTo(map);
   map.fitBounds(routeLayer.getBounds(),{padding:[20,20]});
 
@@ -1383,11 +1358,11 @@ function stopNav(){
 function onGPS(pos){
   const{latitude:lat,longitude:lng,accuracy,altitude,speed,heading}=pos.coords;
   currentPos={lat,lng};
-  if(heading!=null&&!isNaN(heading)) currentHeading=smoothHeading(heading);
+  if(heading!=null&&!isNaN(heading)) currentHeading=heading;
 
   // Speed: prefer GPS value, fallback to distance-based calculation
   const calcSpd=calcSpeedFromPoints(lat,lng);
-  const spdKmh=smoothSpeed(speed!=null?speed*3.6:calcSpd);
+  const spdKmh=speed!=null?speed*3.6:calcSpd;
   lastGPSForSpeed={lat,lng,t:Date.now()};
   el('hud-spd').textContent=spdKmh!=null?Math.round(spdKmh):'—';
   setGPS('active',`Prec: ${accuracy?.toFixed(0)||'?'} m`);
@@ -1420,7 +1395,7 @@ function onGPS(pos){
       const dLat=Math.cos(hr+Math.PI)*offM/111320;
       const dLng=Math.sin(hr+Math.PI)*offM/(111320*Math.cos(lat*Math.PI/180));
       map.setView([lat+dLat,lng+dLng],zoom,{animate:true,duration:.4});
-    } else {
+    }else{
       setMapBearing(0);
       map.setView([lat,lng],zoom,{animate:true,duration:.5});
     }
@@ -1436,7 +1411,7 @@ function onGPS(pos){
   }
 
   // Arrival check
-  checkArrival(lat,lng);
+  checkArrival(lat,lng,spdKmh);
 
   // Recording stop detection
   if(isRec){
@@ -1534,28 +1509,29 @@ function nearestRoutePoint(lat,lng){
   return{nearIdx:lastRouteIdx, distFromStart:routeCumDist[lastRouteIdx]};
 }
 
-function findNextStopRouteIdx(fromIdx){
+function findNextStopRouteIdx(from){
   const ns=stops.find(s=>s.state!=='done');
-  if(!ns||!routePts.length) return routePts.length-1;
-  let best=fromIdx, bestD=haversine(routePts[fromIdx].lat,routePts[fromIdx].lon,ns.lat,ns.lng);
-  const end=Math.min(routePts.length, fromIdx+600);
-  for(let i=fromIdx+1;i<end;i++){
+  if(!ns||!routePts.length)return routePts.length-1;
+  let b=from,bd=haversine(routePts[from].lat,routePts[from].lon,ns.lat,ns.lng);
+  for(let i=from+1;i<Math.min(routePts.length,from+600);i++){
     const d=haversine(routePts[i].lat,routePts[i].lon,ns.lat,ns.lng);
-    if(d<bestD){bestD=d;best=i;}
+    if(d<bd){bd=d;b=i;}
   }
-  return best;
+  return b;
 }
-
 function updRouteRemaining(nearIdx,distFromStart){
   if(!routePts.length)return;
   const done=routePts.slice(0,nearIdx+1).map(p=>[p.lat,p.lon]);
-  // Segmented: bright line to next stop, dashed dim for rest
-  const segEnd=findNextStopRouteIdx(nearIdx);
-  const seg=routePts.slice(nearIdx,segEnd+1).map(p=>[p.lat,p.lon]);
-  const rest=routePts.slice(segEnd).map(p=>[p.lat,p.lon]);
+  const ahead=routePts.slice(nearIdx).map(p=>[p.lat,p.lon]);
   routeDoneLayer.setLatLngs(done.length>1?done:[]);
-  routeAheadLayer.setLatLngs(seg.length>1?seg:[]);
-  if(routeRemainLayer) routeRemainLayer.setLatLngs(rest.length>1?rest:[]);
+  const _se=findNextStopRouteIdx(nearIdx);
+  routeAheadLayer.setLatLngs(routePts.slice(nearIdx,_se+1).map(p=>[p.lat,p.lon]));
+  if(routeRemainLayer)routeRemainLayer.setLatLngs(routePts.slice(_se).map(p=>[p.lat,p.lon]));
+  const pct=totalRouteDist>0?(distFromStart/totalRouteDist)*100:0;
+  const left=totalRouteDist-distFromStart;
+  el('hud-sfill').style.width=pct.toFixed(1)+'%';
+  el('hud-pct').textContent=pct.toFixed(0)+'%';
+  el('hud-left').textContent=left>=1?left.toFixed(1)+' km':(left*1000).toFixed(0)+' m'+' remaining';
 }
 
 // ── INSTRUCTION UPDATE (Waze HUD + voice) ─────────────
@@ -1604,12 +1580,11 @@ function updInstruction(nearIdx,distFromStart){
 }
 
 // ── ARRIVAL / DEPARTURE ────────────────────────────────
-function checkArrival(lat,lng){
+function checkArrival(lat,lng,speed){
   const radius=+el('rng-radius').value;
+  const effectiveRadius=(speed!=null&&speed<20)?radius*1.8:radius;
   const autoStart=+el('rng-auto').value===1;
   const autoStop=+el('rng-autostop').value===1;
-  // Speed-aware radius: expand when slowing near stop
-  const effectiveRadius=(typeof spdKmh!=='undefined'&&spdKmh!=null&&spdKmh<20)?radius*1.8:radius;
 
   // ── Find the single CLOSEST non-done stop for photo preview ──
   // (forEach would call showStopPhoto for every stop in range,
