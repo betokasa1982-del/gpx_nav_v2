@@ -1,7 +1,7 @@
 {
   "name": "GPX Navigator Pro",
   "short_name": "GPX Nav",
-  "description": "GPX route navigation with stop detection, timers and photo stops",
+  "description": "Navegação por rota GPX com detecção de paradas e cronômetro",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "any",
