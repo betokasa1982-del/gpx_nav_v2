@@ -66,7 +66,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
 /* ── MAP ── */
 .map-wrap{position:relative;flex:1;min-height:0;overflow:hidden}
 /* Map is larger than viewport so rotated corners stay filled with tiles */
-#map{width:100%;height:100%;min-height:200px;background:#1a1f2e}
+#map{width:100%;height:100%;background:#1a1f2e}
 .leaflet-map-pane{transition:transform 0.35s linear!important}
 
 /* ════════════════════════════════════════
@@ -281,8 +281,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
 .sheet.expanded{transform:translateY(0)}
 .sheet.mid{transform:translateY(calc(100% - 280px))}
 .sheet.hidden{transform:translateY(calc(100% - 52px))}
-.sheet.peek  {transform:translateY(calc(100% - 88px))}  /* handle + tab bar only */
-.sheet-handle{width:52px;height:5px;background:var(--muted);border-radius:3px;margin:10px auto 4px;flex-shrink:0;cursor:pointer;opacity:.8}
+.sheet-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:10px auto 0;flex-shrink:0;cursor:pointer}
 .peek{display:flex;align-items:center;gap:10px;padding:8px 14px 6px;cursor:pointer;flex-shrink:0;user-select:none}
 .peek-left{flex:1;min-width:0}
 .peek-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -898,25 +897,18 @@ function maybeSpeak(manType, label, distM){
 
 // ── GPS speed fallback (Android often returns speed=null when stopped) ──
 let lastGPSForSpeed=null;
-let _speedBuf=[];      // 5-point moving average for speed
-let _headBuf=[];       // 4-point circular mean for heading
-
+let _sBuf=[],_hBuf=[];  // smoothing buffers
 function smoothSpeed(raw){
-  if(raw==null||raw>200){
-    return _speedBuf.length?_speedBuf[_speedBuf.length-1]:0;
-  }
-  _speedBuf.push(raw);
-  if(_speedBuf.length>5)_speedBuf.shift();
-  return _speedBuf.reduce((a,b)=>a+b,0)/_speedBuf.length;
+  if(raw==null||raw>200) return _sBuf.length?_sBuf[_sBuf.length-1]:0;
+  _sBuf.push(raw); if(_sBuf.length>5)_sBuf.shift();
+  return _sBuf.reduce((a,b)=>a+b,0)/_sBuf.length;
 }
-
 function smoothHeading(raw){
-  if(raw==null||isNaN(raw))return currentHeading;
-  _headBuf.push(raw);
-  if(_headBuf.length>4)_headBuf.shift();
-  const sin=_headBuf.reduce((a,h)=>a+Math.sin(h*Math.PI/180),0);
-  const cos=_headBuf.reduce((a,h)=>a+Math.cos(h*Math.PI/180),0);
-  return((Math.atan2(sin,cos)*180/Math.PI)+360)%360;
+  if(raw==null||isNaN(raw)) return currentHeading;
+  _hBuf.push(raw); if(_hBuf.length>4)_hBuf.shift();
+  const s=_hBuf.reduce((a,h)=>a+Math.sin(h*Math.PI/180),0);
+  const c=_hBuf.reduce((a,h)=>a+Math.cos(h*Math.PI/180),0);
+  return((Math.atan2(s,c)*180/Math.PI)+360)%360;
 }
 function calcSpeedFromPoints(lat,lng){
   const now=Date.now();
@@ -928,10 +920,7 @@ function calcSpeedFromPoints(lat,lng){
 
 // ── MAP ────────────────────────────────────────────────
 map=L.map('map',{center:[-15,-50],zoom:5,zoomControl:false,tap:true,rotate:true,rotateControl:false,touchRotate:false,shiftKeyRotate:false});
-loadStoredRecordings();
-setTimeout(()=>{try{map.invalidateSize();}catch(e){}},600);
-// Ensure map tiles render correctly after initial layout
-setTimeout(()=>{try{map.invalidateSize();}catch(e){}},500);
+loadStoredRecordings(); // restore recordings after page reload
 L.control.zoom({position:'bottomleft'}).addTo(map);
 
 // ── CSS-based heading-up map rotation ─────────────
@@ -944,12 +933,12 @@ function setMapBearing(deg){
     const sz=map.getSize();
     const mx=new DOMMatrix(window.getComputedStyle(pane).transform);
     if(isNaN(mx.m41))return;
-    const tx=mx.m41,ty=mx.m42;
+    const tx=mx.m41, ty=mx.m42;
     const ox=sz.x/2-tx, oy=sz.y/2-ty;
     pane.style.transformOrigin=`${ox}px ${oy}px`;
     pane.style.transform=`translate(${tx}px,${ty}px) rotate(${deg}deg)`;
     _lastBearing=deg;
-  }catch(e){ _lastBearing=0; /* fallback north-up */ }
+  }catch(e){ _lastBearing=0; }
 }
 // Re-apply rotation after every Leaflet move/zoom (Leaflet rewrites transform)
 map.on('move zoom',()=>{
@@ -986,14 +975,11 @@ function toggleMapStyle(){
 }
 
 // ── SHEET ──────────────────────────────────────────────
-let shState='peek',tsY=0;
+let shState='mid',tsY=0;
 function toggleSheet(){shState=shState==='expanded'?'mid':'expanded';applySheet()}
-function applySheet(){
-  const s=el('sheet');
-  s.classList.remove('expanded','mid','hidden','peek');
-  s.classList.add(shState);
-  setTimeout(()=>{try{map.invalidateSize();}catch(e){}},320);
-}
+function applySheet(){const s=el('sheet');s.classList.remove('expanded','mid','hidden');s.classList.add(shState)}
+  setTimeout(()=>{try{map.invalidateSize();}catch(e){}},300);
+
 function shTS(e){tsY=e.touches[0]?.clientY||0}
 function shTM(e){if(e.target.closest('.stops-list,.rec-list,.nav-section')&&shState==='expanded')return;e.preventDefault()}
 function shTE(e){const dy=(e.changedTouches[0]?.clientY||tsY)-tsY;if(Math.abs(dy)<25)return;shState=dy>0?'mid':'expanded';applySheet()}
@@ -1003,7 +989,7 @@ function switchTab(n){
     el('stab-'+t).classList.toggle('active',t===n);
     el('pane-'+t).classList.toggle('active',t===n);
   });
-  if(shState==='peek'||shState==='hidden'){shState='mid';applySheet()}
+  if(shState!=='expanded'){shState='expanded';applySheet()}
 }
 
 // Floating panel during nav
@@ -1405,12 +1391,11 @@ function stopNav(){
 function onGPS(pos){
   const{latitude:lat,longitude:lng,accuracy,altitude,speed,heading}=pos.coords;
   currentPos={lat,lng};
-  if(heading!=null&&!isNaN(heading)) currentHeading=smoothHeading(heading)??heading
+  if(heading!=null&&!isNaN(heading)) currentHeading=smoothHeading(heading);
 
   // Speed: prefer GPS value, fallback to distance-based calculation
   const calcSpd=calcSpeedFromPoints(lat,lng);
-    const rawSpd=speed!=null?speed*3.6:calcSpeedFromPoints(latitude,longitude,pos.timestamp);
-  const spdKmh=smoothSpeed(rawSpd);
+  const spdKmh=smoothSpeed(speed!=null?speed*3.6:calcSpd);
   lastGPSForSpeed={lat,lng,t:Date.now()};
   el('hud-spd').textContent=spdKmh!=null?Math.round(spdKmh):'—';
   setGPS('active',`Prec: ${accuracy?.toFixed(0)||'?'} m`);
