@@ -65,7 +65,9 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
 
 /* ── MAP ── */
 .map-wrap{position:relative;flex:1;min-height:0;overflow:hidden}
-#map{width:100%;height:100%;background:#1a1f2e}
+/* Map is larger than viewport so rotated corners stay filled with tiles */
+#map{width:100%;height:100%;min-height:200px;background:#1a1f2e}
+.leaflet-map-pane{transition:transform 0.35s linear!important}
 
 /* ════════════════════════════════════════
    NAV HUD — Waze-style overlay
@@ -279,7 +281,8 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
 .sheet.expanded{transform:translateY(0)}
 .sheet.mid{transform:translateY(calc(100% - 280px))}
 .sheet.hidden{transform:translateY(calc(100% - 52px))}
-.sheet-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:10px auto 0;flex-shrink:0;cursor:pointer}
+.sheet.peek  {transform:translateY(calc(100% - 88px))}  /* handle + tab bar only */
+.sheet-handle{width:52px;height:5px;background:var(--muted);border-radius:3px;margin:10px auto 4px;flex-shrink:0;cursor:pointer;opacity:.8}
 .peek{display:flex;align-items:center;gap:10px;padding:8px 14px 6px;cursor:pointer;flex-shrink:0;user-select:none}
 .peek-left{flex:1;min-width:0}
 .peek-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -676,7 +679,6 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://unpkg.com/@raruto/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
 <script>
 'use strict';
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
@@ -896,6 +898,26 @@ function maybeSpeak(manType, label, distM){
 
 // ── GPS speed fallback (Android often returns speed=null when stopped) ──
 let lastGPSForSpeed=null;
+let _speedBuf=[];      // 5-point moving average for speed
+let _headBuf=[];       // 4-point circular mean for heading
+
+function smoothSpeed(raw){
+  if(raw==null||raw>200){
+    return _speedBuf.length?_speedBuf[_speedBuf.length-1]:0;
+  }
+  _speedBuf.push(raw);
+  if(_speedBuf.length>5)_speedBuf.shift();
+  return _speedBuf.reduce((a,b)=>a+b,0)/_speedBuf.length;
+}
+
+function smoothHeading(raw){
+  if(raw==null||isNaN(raw))return currentHeading;
+  _headBuf.push(raw);
+  if(_headBuf.length>4)_headBuf.shift();
+  const sin=_headBuf.reduce((a,h)=>a+Math.sin(h*Math.PI/180),0);
+  const cos=_headBuf.reduce((a,h)=>a+Math.cos(h*Math.PI/180),0);
+  return((Math.atan2(sin,cos)*180/Math.PI)+360)%360;
+}
 function calcSpeedFromPoints(lat,lng){
   const now=Date.now();
   if(!lastGPSForSpeed) return null;
@@ -905,19 +927,35 @@ function calcSpeedFromPoints(lat,lng){
 }
 
 // ── MAP ────────────────────────────────────────────────
-let _lb=0;
-function setMapBearing(d){
-  const p=map.getContainer().querySelector('.leaflet-map-pane');
-  if(!p)return;
-  try{const sz=map.getSize(),mx=new DOMMatrix(getComputedStyle(p).transform);
-    if(isNaN(mx.m41))return;
-    p.style.transformOrigin=`${sz.x/2-mx.m41}px ${sz.y/2-mx.m42}px`;
-    p.style.transform=`translate(${mx.m41}px,${mx.m42}px) rotate(${d}deg)`;
-    _lb=d;}catch(e){_lb=0;}}
 map=L.map('map',{center:[-15,-50],zoom:5,zoomControl:false,tap:true,rotate:true,rotateControl:false,touchRotate:false,shiftKeyRotate:false});
-loadStoredRecordings(); // restore recordings after page reload
+loadStoredRecordings();
+setTimeout(()=>{try{map.invalidateSize();}catch(e){}},600);
+// Ensure map tiles render correctly after initial layout
+setTimeout(()=>{try{map.invalidateSize();}catch(e){}},500);
 L.control.zoom({position:'bottomleft'}).addTo(map);
-map.on('move zoom',()=>{if(_lb)requestAnimationFrame(()=>setMapBearing(_lb));});
+
+// ── CSS-based heading-up map rotation ─────────────
+// Composes rotation with Leaflet's own translate3d so tiles render correctly
+let _lastBearing=0;
+function setMapBearing(deg){
+  const pane=map.getContainer().querySelector('.leaflet-map-pane');
+  if(!pane)return;
+  try{
+    const sz=map.getSize();
+    const mx=new DOMMatrix(window.getComputedStyle(pane).transform);
+    if(isNaN(mx.m41))return;
+    const tx=mx.m41,ty=mx.m42;
+    const ox=sz.x/2-tx, oy=sz.y/2-ty;
+    pane.style.transformOrigin=`${ox}px ${oy}px`;
+    pane.style.transform=`translate(${tx}px,${ty}px) rotate(${deg}deg)`;
+    _lastBearing=deg;
+  }catch(e){ _lastBearing=0; /* fallback north-up */ }
+}
+// Re-apply rotation after every Leaflet move/zoom (Leaflet rewrites transform)
+map.on('move zoom',()=>{
+  if((navActive||isRec)&&_lastBearing!==0)
+    requestAnimationFrame(()=>setMapBearing(_lastBearing));
+});
 // Map tile layers — Voyager default (readable), Dark for night
 const TILES={
   day: {
@@ -941,16 +979,21 @@ function toggleMapStyle(){
     attribution:'&copy; OpenStreetMap &copy; CARTO',subdomains:'abcd',maxZoom:20
   }).addTo(map);
   // TileLayer goes under other layers — bring route/markers to front
-  [routeLayer,routeDoneLayer,routeAheadLayer,routeRemainLayer,recLayer].forEach(l=>l?.bringToFront());
+  [routeLayer,routeDoneLayer,routeAheadLayer,recLayer].forEach(l=>l?.bringToFront());
   Object.values(stopMarkers).forEach(m=>m?.bringToFront?.());
   const btn=el('map-style-btn');
   if(btn) btn.textContent=TILES[currentTile==='day'?'night':'day'].label;
 }
 
 // ── SHEET ──────────────────────────────────────────────
-let shState='mid',tsY=0;
+let shState='peek',tsY=0;
 function toggleSheet(){shState=shState==='expanded'?'mid':'expanded';applySheet()}
-function applySheet(){const s=el('sheet');s.classList.remove('expanded','mid','hidden');s.classList.add(shState)}
+function applySheet(){
+  const s=el('sheet');
+  s.classList.remove('expanded','mid','hidden','peek');
+  s.classList.add(shState);
+  setTimeout(()=>{try{map.invalidateSize();}catch(e){}},320);
+}
 function shTS(e){tsY=e.touches[0]?.clientY||0}
 function shTM(e){if(e.target.closest('.stops-list,.rec-list,.nav-section')&&shState==='expanded')return;e.preventDefault()}
 function shTE(e){const dy=(e.changedTouches[0]?.clientY||tsY)-tsY;if(Math.abs(dy)<25)return;shState=dy>0?'mid':'expanded';applySheet()}
@@ -960,7 +1003,7 @@ function switchTab(n){
     el('stab-'+t).classList.toggle('active',t===n);
     el('pane-'+t).classList.toggle('active',t===n);
   });
-  if(shState!=='expanded'){shState='expanded';applySheet()}
+  if(shState==='peek'||shState==='hidden'){shState='mid';applySheet()}
 }
 
 // Floating panel during nav
@@ -972,13 +1015,17 @@ function toggleHudPanel(){
 }
 function renderHudPanel(){
   const c=el('hud-sp-list');c.innerHTML='';
-  const _cur=stops.find(s=>s.state==='current');
-  const _nxt=stops.find(s=>s.state==='waiting');
-  const _hdr=document.createElement('div');
-  _hdr.style='padding:5px 12px;font-size:10px;font-family:var(--mono);color:var(--muted);border-bottom:1px solid var(--border)';
-  _hdr.textContent=`Stop ${stops.filter(s=>s.state==='done').length+1} of ${stops.length}`;
-  c.appendChild(_hdr);
-  [_cur,_nxt].filter(Boolean).forEach(s=>{
+  // Show only the CURRENT stop + NEXT upcoming stop (not the full list)
+  const current=stops.find(s=>s.state==='current');
+  const next=stops.find(s=>s.state==='waiting');
+  const toShow=[current,next].filter(Boolean);
+  const total=stops.length, done=stops.filter(s=>s.state==='done').length;
+  // Progress header
+  const hdr=document.createElement('div');
+  hdr.style.cssText='padding:6px 12px;font-size:11px;font-family:var(--mono);color:var(--muted);border-bottom:1px solid var(--border)';
+  hdr.textContent=`Stop ${done+1} of ${total} · ${done} done`;
+  c.appendChild(hdr);
+  toShow.forEach(s=>{
     const row=document.createElement('div');
     const delta=s.elapsed-(s.dur_s||0);
     const timerTxt=s.elapsed>0||s.state==='current'?fmtTime(s.elapsed):'—';
@@ -1136,10 +1183,10 @@ function parseGPX(xml,filename){
 
   // Draw layers
   const ll=pts.map(p=>[p.lat,p.lon]);
-  routeLayer    =L.polyline(ll,{color:'rgba(240,165,0,.2)',weight:6}).addTo(map);
-  routeAheadLayer =L.polyline(ll,{color:'#f0a500',weight:5,opacity:.95}).addTo(map);
-  routeRemainLayer=L.polyline([],{color:'rgba(240,165,0,.3)',weight:3,dashArray:'7 5'}).addTo(map);
-  routeDoneLayer  =L.polyline([],{color:'#555',weight:4,opacity:.7}).addTo(map);
+  routeLayer    =L.polyline(ll,{color:'rgba(240,165,0,.1)',weight:5}).addTo(map);
+  routeAheadLayer=L.polyline(ll,{color:'#f0a500',weight:5,opacity:.95}).addTo(map);
+  routeRemainLayer=L.polyline([],{color:'rgba(240,165,0,.3)',weight:3,opacity:.6,dashArray:'6 4'}).addTo(map);
+  routeDoneLayer =L.polyline([],{color:'#555',weight:4,opacity:.5}).addTo(map);
   map.fitBounds(routeLayer.getBounds(),{padding:[20,20]});
 
   // Start / end markers
@@ -1358,11 +1405,12 @@ function stopNav(){
 function onGPS(pos){
   const{latitude:lat,longitude:lng,accuracy,altitude,speed,heading}=pos.coords;
   currentPos={lat,lng};
-  if(heading!=null&&!isNaN(heading)) currentHeading=heading;
+  if(heading!=null&&!isNaN(heading)) currentHeading=smoothHeading(heading)??heading
 
   // Speed: prefer GPS value, fallback to distance-based calculation
   const calcSpd=calcSpeedFromPoints(lat,lng);
-  const spdKmh=speed!=null?speed*3.6:calcSpd;
+    const rawSpd=speed!=null?speed*3.6:calcSpeedFromPoints(lat,lng,pos.timestamp);
+  const spdKmh=smoothSpeed(rawSpd);
   lastGPSForSpeed={lat,lng,t:Date.now()};
   el('hud-spd').textContent=spdKmh!=null?Math.round(spdKmh):'—';
   setGPS('active',`Prec: ${accuracy?.toFixed(0)||'?'} m`);
@@ -1388,15 +1436,17 @@ function onGPS(pos){
 
   if(+el('rng-follow').value===1){
     const zoom=+el('rng-zoom').value;
-    if(navActive&&currentHeading!=null){
-      setMapBearing(-currentHeading);
+    if((navActive||isRec)&&currentHeading!=null&&map.setBearing){
+      // Heading-up: rotate map to put direction of travel at top
+      setMapBearing(-currentHeading); // negative = rotate map opposite to heading
+      // Offset center slightly behind vehicle (show more route ahead)
       const hr=currentHeading*Math.PI/180;
-      const offM=40;
+      const offM=40; // metres behind
       const dLat=Math.cos(hr+Math.PI)*offM/111320;
       const dLng=Math.sin(hr+Math.PI)*offM/(111320*Math.cos(lat*Math.PI/180));
-      map.setView([lat+dLat,lng+dLng],zoom,{animate:true,duration:.4});
+      map.setView([lat+dLat,lng+dLng],zoom,{animate:true,duration:.4,noMoveStart:true});
     }else{
-      setMapBearing(0);
+      setMapBearing(0); // north-up when stopped
       map.setView([lat,lng],zoom,{animate:true,duration:.5});
     }
   }
@@ -1411,7 +1461,7 @@ function onGPS(pos){
   }
 
   // Arrival check
-  checkArrival(lat,lng,spdKmh);
+  checkArrival(lat,lng);
 
   // Recording stop detection
   if(isRec){
@@ -1492,8 +1542,8 @@ function nearestRoutePoint(lat,lng){
   // Windowed search: look AHEAD of last known position only.
   // This prevents confusing a street driven in one direction with
   // the same street driven in the opposite direction later in the route.
-  const AHEAD=500;   // look up to 250 pts ahead (≈ a few km at 5m GPS density)
-  const BACK=3;      // allow slight backtrack for GPS jitter
+  const AHEAD=500;   // wider window — handles long segments between stops
+  const BACK=3;      // minimal backtrack — prevents bidirectional confusion
 
   const from=Math.max(0, lastRouteIdx-BACK);
   const to  =Math.min(routePts.length-1, lastRouteIdx+AHEAD);
@@ -1509,32 +1559,30 @@ function nearestRoutePoint(lat,lng){
   return{nearIdx:lastRouteIdx, distFromStart:routeCumDist[lastRouteIdx]};
 }
 
-function findNextStopRouteIdx(from){
+function findNextStopRouteIdx(fromIdx){
   const ns=stops.find(s=>s.state!=='done');
   if(!ns||!routePts.length)return routePts.length-1;
-  let b=from,bd=haversine(routePts[from].lat,routePts[from].lon,ns.lat,ns.lng);
-  for(let i=from+1;i<Math.min(routePts.length,from+600);i++){
+  let best=fromIdx,bestD=Infinity;
+  const end=Math.min(routePts.length,fromIdx+600);
+  for(let i=fromIdx;i<end;i++){
     const d=haversine(routePts[i].lat,routePts[i].lon,ns.lat,ns.lng);
-    if(d<bd){bd=d;b=i;}
+    if(d<bestD){bestD=d;best=i;}
   }
-  return b;
+  return best;
 }
+
 function updRouteRemaining(nearIdx,distFromStart){
   if(!routePts.length)return;
   const done=routePts.slice(0,nearIdx+1).map(p=>[p.lat,p.lon]);
-  const ahead=routePts.slice(nearIdx).map(p=>[p.lat,p.lon]);
+  // Segmented: bright = to next stop; dim dashed = rest of route
+  const segEnd=findNextStopRouteIdx(nearIdx);
+  const segment=routePts.slice(nearIdx,segEnd+1).map(p=>[p.lat,p.lon]);
+  const remain =routePts.slice(segEnd).map(p=>[p.lat,p.lon]);
   routeDoneLayer.setLatLngs(done.length>1?done:[]);
-  const _se=findNextStopRouteIdx(nearIdx);
-  routeAheadLayer.setLatLngs(routePts.slice(nearIdx,_se+1).map(p=>[p.lat,p.lon]));
-  if(routeRemainLayer)routeRemainLayer.setLatLngs(routePts.slice(_se).map(p=>[p.lat,p.lon]));
-  const pct=totalRouteDist>0?(distFromStart/totalRouteDist)*100:0;
-  const left=totalRouteDist-distFromStart;
-  el('hud-sfill').style.width=pct.toFixed(1)+'%';
-  el('hud-pct').textContent=pct.toFixed(0)+'%';
-  el('hud-left').textContent=left>=1?left.toFixed(1)+' km':(left*1000).toFixed(0)+' m'+' remaining';
+  routeAheadLayer.setLatLngs(segment.length>1?segment:done.length?[done[done.length-1]]:[] );
+  if(routeRemainLayer)routeRemainLayer.setLatLngs(remain.length>1?remain:[]);
 }
 
-// ── INSTRUCTION UPDATE (Waze HUD + voice) ─────────────
 function updInstruction(nearIdx,distFromStart){
   if(!currentPos)return;
   const{dist,icon,label,detail,cls,type}=getNextManeuver(nearIdx,distFromStart);
@@ -1580,9 +1628,8 @@ function updInstruction(nearIdx,distFromStart){
 }
 
 // ── ARRIVAL / DEPARTURE ────────────────────────────────
-function checkArrival(lat,lng,speed){
+function checkArrival(lat,lng){
   const radius=+el('rng-radius').value;
-  const effectiveRadius=(speed!=null&&speed<20)?radius*1.8:radius;
   const autoStart=+el('rng-auto').value===1;
   const autoStop=+el('rng-autostop').value===1;
 
@@ -1614,6 +1661,11 @@ function checkArrival(lat,lng,speed){
   }
 
   // ── Arrival / departure checks ────────────────────────────
+  // Speed-aware arrival radius: when slowing down near stop, expand detection zone
+  const effectiveRadius=Math.max(radius,
+    (currentPos&&spdKmh!=null&&spdKmh<20)?radius*1.8:radius
+  );
+
   stops.forEach(s=>{
     if(s.state==='done')return;
     const distM=haversine(lat,lng,s.lat,s.lng)*1000;
@@ -1635,7 +1687,7 @@ function checkArrival(lat,lng,speed){
       if(!hudPanelOpen) toggleHudPanel();
       else renderHudPanel();
 
-    } else if(distM>effectiveRadius*1.2&&insideStop.has(s.id)){
+    } else if(distM>radius*1.3&&insideStop.has(s.id)){
       insideStop.delete(s.id);
       if(autoStop&&s.running){
         pauseTimer(s.id);markDone(s.id);
