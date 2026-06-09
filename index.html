@@ -897,6 +897,26 @@ function maybeSpeak(manType, label, distM){
 
 // ── GPS speed fallback (Android often returns speed=null when stopped) ──
 let lastGPSForSpeed=null;
+let _speedBuf=[];      // 5-point moving average for speed
+let _headBuf=[];       // 4-point circular mean for heading
+
+function smoothSpeed(raw){
+  if(raw==null||raw>200){
+    return _speedBuf.length?_speedBuf[_speedBuf.length-1]:0;
+  }
+  _speedBuf.push(raw);
+  if(_speedBuf.length>5)_speedBuf.shift();
+  return _speedBuf.reduce((a,b)=>a+b,0)/_speedBuf.length;
+}
+
+function smoothHeading(raw){
+  if(raw==null||isNaN(raw))return currentHeading;
+  _headBuf.push(raw);
+  if(_headBuf.length>4)_headBuf.shift();
+  const sin=_headBuf.reduce((a,h)=>a+Math.sin(h*Math.PI/180),0);
+  const cos=_headBuf.reduce((a,h)=>a+Math.cos(h*Math.PI/180),0);
+  return((Math.atan2(sin,cos)*180/Math.PI)+360)%360;
+}
 function calcSpeedFromPoints(lat,lng){
   const now=Date.now();
   if(!lastGPSForSpeed) return null;
@@ -916,17 +936,16 @@ let _lastBearing=0;
 function setMapBearing(deg){
   const pane=map.getContainer().querySelector('.leaflet-map-pane');
   if(!pane)return;
-  const sz=map.getSize();
-  const t=pane.style.transform||'';
-  // Parse Leaflet's translate3d(tx,ty,0)
-  const m=t.match(/translate3d\(\s*([\d.-]+)px,\s*([\d.-]+)px/);
-  if(!m)return;
-  const tx=parseFloat(m[1]),ty=parseFloat(m[2]);
-  // Rotation origin = center of visible screen in map-pane coords
-  const ox=sz.x/2-tx, oy=sz.y/2-ty;
-  pane.style.transformOrigin=`${ox}px ${oy}px`;
-  pane.style.transform=`translate3d(${tx}px,${ty}px,0) rotate(${deg}deg)`;
-  _lastBearing=deg;
+  try{
+    const sz=map.getSize();
+    const mx=new DOMMatrix(window.getComputedStyle(pane).transform);
+    if(isNaN(mx.m41))return;
+    const tx=mx.m41,ty=mx.m42;
+    const ox=sz.x/2-tx, oy=sz.y/2-ty;
+    pane.style.transformOrigin=`${ox}px ${oy}px`;
+    pane.style.transform=`translate(${tx}px,${ty}px) rotate(${deg}deg)`;
+    _lastBearing=deg;
+  }catch(e){ _lastBearing=0; /* fallback north-up */ }
 }
 // Re-apply rotation after every Leaflet move/zoom (Leaflet rewrites transform)
 map.on('move zoom',()=>{
@@ -1377,11 +1396,12 @@ function stopNav(){
 function onGPS(pos){
   const{latitude:lat,longitude:lng,accuracy,altitude,speed,heading}=pos.coords;
   currentPos={lat,lng};
-  if(heading!=null&&!isNaN(heading)) currentHeading=heading;
+  if(heading!=null&&!isNaN(heading)) currentHeading=smoothHeading(heading)??heading
 
   // Speed: prefer GPS value, fallback to distance-based calculation
   const calcSpd=calcSpeedFromPoints(lat,lng);
-  const spdKmh=speed!=null?speed*3.6:calcSpd;
+    const rawSpd=speed!=null?speed*3.6:calcSpeedFromPoints(latitude,longitude,pos.timestamp);
+  const spdKmh=smoothSpeed(rawSpd);
   lastGPSForSpeed={lat,lng,t:Date.now()};
   el('hud-spd').textContent=spdKmh!=null?Math.round(spdKmh):'—';
   setGPS('active',`Prec: ${accuracy?.toFixed(0)||'?'} m`);
