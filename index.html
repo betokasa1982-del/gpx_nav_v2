@@ -689,6 +689,7 @@ function hideInstall(){el('install-banner').style.display='none'}
 window.addEventListener('appinstalled',hideInstall);
 
 // ── STATE ──────────────────────────────────────────────
+let routeRemainLayer = null;
 let map, routeLayer, routeDoneLayer, routeAheadLayer, recLayer;
 let posMarker, accCircle;
 let stops=[], stopMarkers={};
