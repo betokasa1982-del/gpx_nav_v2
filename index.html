@@ -706,6 +706,7 @@ window.addEventListener('appinstalled',hideInstall);
 let map, routeLayer, routeDoneLayer, routeAheadLayer, routeRemainLayer, recLayer;
 let posMarker, accCircle;
 let stops=[], stopMarkers={};
+let extraMarkers=[];      // start/end dots + recording stop pins (were orphaned)
 let routePts=[];          // [{lat,lon}] full route
 let totalRouteDist=0;
 let maneuvers=[];         // computed turn-by-turn instructions
@@ -1152,9 +1153,16 @@ function buildManeuvers(pts){
     for(let i=1;i<pts.length;i++)
       cums.push(cums[i-1]+haversine(pts[i-1].lat,pts[i-1].lon,pts[i].lat,pts[i].lon));
 
-    // Smoothed bearing change at each point
+    // Smoothed bearing change at each point.
+    // MIN_LEG: bearings over windows shorter than ~8 m are GPS-jitter noise
+    // (vehicle parked at a stop) — they produced phantom U-turns exactly at
+    // stop locations, announced right when the driver departed.
+    const MIN_LEG=0.008; // km
     const diffs=new Array(pts.length).fill(0);
     for(let i=SMOOTH;i<pts.length-SMOOTH;i++){
+      const d1=haversine(pts[i-SMOOTH].lat,pts[i-SMOOTH].lon,pts[i].lat,pts[i].lon);
+      const d2=haversine(pts[i].lat,pts[i].lon,pts[i+SMOOTH].lat,pts[i+SMOOTH].lon);
+      if(d1<MIN_LEG||d2<MIN_LEG)continue; // unreliable bearing — leave diff at 0
       const b1=brng(pts[i-SMOOTH].lat,pts[i-SMOOTH].lon,pts[i].lat,pts[i].lon);
       const b2=brng(pts[i].lat,pts[i].lon,pts[i+SMOOTH].lat,pts[i+SMOOTH].lon);
       diffs[i]=angleDiff(b1,b2);
@@ -1244,6 +1252,8 @@ function clearMapLayers(){
   routeLayer=routeDoneLayer=routeAheadLayer=routeRemainLayer=recLayer=null;
   Object.values(stopMarkers).forEach(m=>map.removeLayer(m));
   stopMarkers={};
+  extraMarkers.forEach(m=>{try{map.removeLayer(m)}catch(e){}});
+  extraMarkers=[];
 }
 
 function parseGPX(xml,filename){
@@ -1274,8 +1284,8 @@ function parseGPX(xml,filename){
 
   // Start / end markers
   const dot=c=>L.divIcon({html:`<div style="background:${c};width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 8px ${c}"></div>`,className:'',iconAnchor:[7,7]});
-  L.marker(ll[0],{icon:dot('#3fb950')}).addTo(map).bindTooltip('Start');
-  L.marker(ll[ll.length-1],{icon:dot('#f85149')}).addTo(map).bindTooltip('End');
+  extraMarkers.push(L.marker(ll[0],{icon:dot('#3fb950')}).addTo(map).bindTooltip('Start'));
+  extraMarkers.push(L.marker(ll[ll.length-1],{icon:dot('#f85149')}).addTo(map).bindTooltip('End'));
 
   // Waypoints → stops
   doc.querySelectorAll('wpt').forEach((w,i)=>{
@@ -1595,7 +1605,7 @@ function onGPS(pos){
             </div>`,
             className:'',iconAnchor:[24,20]
           });
-          L.marker([lat,lng],{icon:stopIcon,zIndexOffset:900}).addTo(map);
+          extraMarkers.push(L.marker([lat,lng],{icon:stopIcon,zIndexOffset:900}).addTo(map));
           el('rec-sc').textContent=`${recStops.length} stop${recStops.length>1?'s':''} detected`;
           // Prompt camera for photo of this stop
           pendingPhotoStopIdx=recStops.length-1;
@@ -1619,13 +1629,19 @@ function onGPS(pos){
       recStopCandidate=null;
     }
 
-    recPoints.push({lat,lng,t:Date.now(),speed:speed,alt:altitude});
+    // Decimation: while parked, GPS jitter would add hundreds of noise
+    // points (phantom km, fake maneuvers, bloated files). Record only when
+    // moved >= 3 m, with a 10 s keep-alive point for time continuity.
+    const lastRP=recPoints[recPoints.length-1];
+    const movedM=lastRP?haversine(lastRP.lat,lastRP.lng,lat,lng)*1000:Infinity;
+    if(!lastRP||movedM>=3||Date.now()-lastRP.t>=10000){
+      recPoints.push({lat,lng,t:Date.now(),speed:speed,alt:altitude});
+      // Draw live track
+      if(!recLayer){recLayer=L.polyline([[lat,lng]],{color:'#58a6ff',weight:3,opacity:.85}).addTo(map)}
+      else recLayer.addLatLng([lat,lng]);
+    }
     const recDist=calcDistRaw(recPoints);
     el('rec-stats').textContent=`${recPoints.length} pts · ${recDist.toFixed(2)} km`;
-
-    // Draw live track
-    if(!recLayer){recLayer=L.polyline([[lat,lng]],{color:'#58a6ff',weight:3,opacity:.85}).addTo(map)}
-    else recLayer.addLatLng([lat,lng]);
   }
 }
 function onGPSErr(err){
