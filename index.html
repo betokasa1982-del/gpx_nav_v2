@@ -67,12 +67,14 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
 .map-wrap{position:relative;flex:1;min-height:0;overflow:hidden}
 /* Map is 2x the viewport so heading-up rotation never exposes empty corners.
    The visible area is the central quarter; controls are offset back inside. */
-#map{position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:#1a1f2e}
+#map{position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:#1a1f2e;
+  will-change:transform;transition:transform .45s linear}
 #map .leaflet-bottom{bottom:25%}
 #map .leaflet-top{top:25%}
 #map .leaflet-left{left:25%}
 #map .leaflet-right{right:25%}
-.leaflet-map-pane{transition:transform 0.35s linear!important}
+/* Controls would spin with the map while rotated — hide them during heading-up */
+#map.rotated .leaflet-control-container{visibility:hidden}
 
 /* ════════════════════════════════════════
    NAV HUD — Waze-style overlay
@@ -904,7 +906,9 @@ function buildCumDist(pts){
 
 // ── Voice guidance ───────────────────────────────────
 let voiceOn=true;
-let lastVoiceKey='';          // prevents repeating same announcement
+let lastVoiceKey='';          // maneuver-bracket dedup (maybeSpeak ONLY)
+let destinationAnnounced=false;
+const evtAnnounced=new Set();  // stop ids whose events were already announced
 let lastVoiceManeuver='';     // tracks when maneuver changes
 
 function toggleVoice(){
@@ -914,13 +918,28 @@ function toggleVoice(){
   if(!voiceOn&&window.speechSynthesis) window.speechSynthesis.cancel();
 }
 
-function speakText(text){
+// Spec §11.2: semantic key (numbers → #) + 10 s cooldown per key.
+// The old version cancelled the CURRENT utterance before EVERY speak, so any
+// repeated trigger cut speech mid-word in a loop ("stop one stop one ...").
+const _spokenAt={};
+function speakText(text,priority=false){
   if(!voiceOn||!window.speechSynthesis)return;
-  window.speechSynthesis.cancel();
+  const key=text.replace(/\d+/g,'#');
+  const now=Date.now();
+  // Cooldown applies to EVERYTHING (priority included) — defence in depth:
+  // even if an upstream guard breaks, the same sentence can never loop.
+  if(_spokenAt[key]&&now-_spokenAt[key]<10000)return;
+  // Crude queue cap: if something is speaking AND more is pending, drop
+  // non-priority messages instead of piling up stale instructions.
+  if(!priority&&window.speechSynthesis.speaking&&window.speechSynthesis.pending)return;
+  _spokenAt[key]=now;
+  if(priority)window.speechSynthesis.cancel(); // urgent: replace current speech
   const u=new SpeechSynthesisUtterance(text);
   u.lang='en-US';u.rate=1.0;u.pitch=1.0;u.volume=1.0;
   window.speechSynthesis.speak(u);
 }
+// Chrome-Android watchdog: synthesis silently pauses on long sessions
+setInterval(()=>{try{if(window.speechSynthesis?.speaking)window.speechSynthesis.resume()}catch(e){}},5000);
 
 function maybeSpeak(manType, label, distM){
   if(!voiceOn)return;
@@ -979,27 +998,22 @@ setTimeout(()=>{try{map.invalidateSize();}catch(e){}},500);
 L.control.zoom({position:'bottomleft'}).addTo(map);
 
 // ── CSS-based heading-up map rotation ─────────────
-// Composes rotation with Leaflet's own translate3d so tiles render correctly
+// Rotates the OUTER #map container (2x oversized, vehicle kept at centre by
+// setView). Leaflet's internal pane transforms are never touched, so there is
+// no feedback loop with Leaflet's own pan/zoom animations — the previous
+// approach read the pane's computed transform mid-animation and wrote stale
+// interpolated positions back, drifting until the view was lost.
 let _lastBearing=0;
 function setMapBearing(deg){
-  const pane=map.getContainer().querySelector('.leaflet-map-pane');
-  if(!pane)return;
-  try{
-    const sz=map.getSize();
-    const mx=new DOMMatrix(window.getComputedStyle(pane).transform);
-    if(isNaN(mx.m41))return;
-    const tx=mx.m41,ty=mx.m42;
-    const ox=sz.x/2-tx, oy=sz.y/2-ty;
-    pane.style.transformOrigin=`${ox}px ${oy}px`;
-    pane.style.transform=`translate(${tx}px,${ty}px) rotate(${deg}deg)`;
-    _lastBearing=deg;
-  }catch(e){ _lastBearing=0; /* fallback north-up */ }
+  const c=map.getContainer();if(!c)return;
+  // Unwrap across 0/360 so the CSS transition never spins the long way round
+  let d=deg;
+  while(d-_lastBearing>180)d-=360;
+  while(d-_lastBearing<-180)d+=360;
+  c.style.transform=(d%360===0)?'':`rotate(${d}deg)`;
+  c.classList.toggle('rotated',d%360!==0);
+  _lastBearing=d;
 }
-// Re-apply rotation after every Leaflet move/zoom (Leaflet rewrites transform)
-map.on('move zoom',()=>{
-  if((navActive||isRec)&&_lastBearing!==0)
-    requestAnimationFrame(()=>setMapBearing(_lastBearing));
-});
 // Map tile layers — Voyager default (readable), Dark for night
 const TILES={
   day: {
@@ -1245,6 +1259,7 @@ function parseGPX(xml,filename){
 
   clearMapLayers();
   stops=[];insideStop.clear();el('stops-list').innerHTML='';
+  destinationAnnounced=false;evtAnnounced.clear();departGate=null;
 
   routePts=pts;buildCumDist(pts);totalRouteDist=routeCumDist[routeCumDist.length-1];
   lastRouteIdx=0;
@@ -1394,7 +1409,7 @@ function startTimer(id){
         closeStopPhoto();
         if(hudPanelOpen)renderHudPanel();
         showAlert('arrived','✓ Stop '+s.id+' — time complete. Proceed to next stop.');
-        speakText('Stop '+s.id+' time complete. Proceed to the next stop.');
+        speakText('Stop '+s.id+' time complete. Proceed to the next stop.',true);
       },800);
     }
   },1000);
@@ -1457,7 +1472,7 @@ function startNav(){
   // Reset per-run state — without this, a 2nd run of the same route
   // starts with lastRouteIdx stuck at the end and matching never recovers.
   lastRouteIdx=0;_speedBuf=[];_headBuf=[];lastGPSForSpeed=null;
-  lastVoiceKey='';lastVoiceManeuver='';
+  lastVoiceKey='';lastVoiceManeuver='';destinationAnnounced=false;evtAnnounced.clear();
   el('btn-nav').style.display='none';el('btn-nav2').style.display='none';
   el('btn-stop').style.display='';el('btn-nav3').style.display='none';el('btn-stop3').style.display='';
   el('nav-hud').classList.add('on');el('hud-toggle').classList.add('on');
@@ -1538,8 +1553,8 @@ function onGPS(pos){
   updRouteRemaining(nearIdx,distFromStart);
   updInstruction(nearIdx,distFromStart);
   // Announce arrival at destination
-  if(routePts.length&&nearIdx>=routePts.length-3&&lastVoiceKey!=='destination'){
-    lastVoiceKey='destination';speakText('You have arrived at your destination');
+  if(routePts.length&&nearIdx>=routePts.length-3&&!destinationAnnounced){
+    destinationAnnounced=true;speakText('You have arrived at your destination',true);
   }
 
   // Arrival check (rawKmh passed in — it's local to this function)
@@ -1767,13 +1782,12 @@ function checkArrival(lat,lng,rawKmh){
       if(next.photo&&next.photo.length>10&&photoPreviewStopId!==next.id){
         showStopPhoto(next,dNext);
       }
-      const evtKey='evt_ann_'+next.id;
-      if(next.events?.length&&lastVoiceKey!==evtKey){
-        lastVoiceKey=evtKey;
+      if(next.events?.length&&!evtAnnounced.has(next.id)){
+        evtAnnounced.add(next.id);
         const msgs=[];
         if(next.events.includes('openDoor'))msgs.push('open doors');
         if(next.events.includes('kneeling'))msgs.push('kneeling');
-        if(msgs.length)speakText(`Stop ${next.id}: ${msgs.join(' and ')} required`);
+        if(msgs.length)speakText(`Stop ${next.id}: ${msgs.join(' and ')} required`,true);
       }
     }
 
@@ -1786,8 +1800,7 @@ function checkArrival(lat,lng,rawKmh){
       if(next.photo&&next.photo.length>10) showStopPhoto(next,0);
       next.state='current';updCardState(next);
       if(autoStart&&!next.running)startTimer(next.id);
-      speakText(`Arrived at stop ${next.id}${next.dur_s?', planned '+fmtTime(next.dur_s):''}`);
-      lastVoiceKey='';
+      speakText(`Arrived at stop ${next.id}${next.dur_s?', planned '+fmtTime(next.dur_s):''}`,true);
       el(`sc-${next.id}`)?.scrollIntoView({behavior:'smooth',block:'nearest'});
       if(!hudPanelOpen) toggleHudPanel();
       else renderHudPanel();
@@ -1921,6 +1934,7 @@ function loadRec(idx){
 
     // ── Stops ─────────────────────────────────────────
     stops=[];insideStop.clear();stopMarkers={};
+    destinationAnnounced=false;evtAnnounced.clear();departGate=null;
     const sl=el('stops-list');if(sl)sl.innerHTML='';
 
     (rec.stops||[]).forEach((s,i)=>{
