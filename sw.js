@@ -1,6 +1,6 @@
 // GPX Navigator Pro — Service Worker
 // Versão do cache: incrementar ao atualizar os arquivos
-const CACHE = "gpx-nav-v21";
+const CACHE = "gpx-nav-v22";
 const ASSETS = [
   "./",
   "./index.html",
@@ -35,10 +35,13 @@ self.addEventListener("activate", e => {
 
 // Fetch: cache-first para assets locais, network-first para tiles do mapa
 self.addEventListener("fetch", e => {
+  // Só GET e http(s) — cache.put lança erro com POST/chrome-extension://
+  if (e.request.method !== "GET" || !e.request.url.startsWith("http")) return;
   const url = e.request.url;
 
   // Tiles do mapa: sempre tenta rede, fallback para cache
-  if (url.includes("carto.com") || url.includes("openstreetmap")) {
+  // (basemaps.cartocdn.com — o match antigo "carto.com" nunca casava)
+  if (url.includes("cartocdn") || url.includes("carto.com") || url.includes("openstreetmap")) {
     e.respondWith(
       fetch(e.request)
         .then(res => {

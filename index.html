@@ -418,7 +418,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
   </div>
   <div class="top-actions">
     <button class="btn primary" onclick="el('gpx-file').click()" style="min-width:38px;padding:7px">📂</button>
-    <input type="file" id="gpx-file" accept=".gpx" style="display:none" onchange="loadGPX(this)">
+    <input type="file" id="gpx-file" accept=".gpx,.json" style="display:none" onchange="loadGPX(this)">
     <button class="btn rec" id="btn-rec" onclick="toggleRec()">⏺ Rec</button>
     <button id="map-style-btn" onclick="toggleMapStyle()" title="Toggle day/night map"
       style="background:var(--panel);border:1px solid var(--border);border-radius:6px;
@@ -674,6 +674,11 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
           <p>Tap <strong style="color:var(--red)">⏺ Rec</strong> to record a new route. Stops are detected automatically by speed.</p>
         </div>
       </div>
+      <div class="stops-bar">
+        <button class="btn" style="flex:1" onclick="el('json-file').click()">📥 Import JSON</button>
+        <button class="btn primary" style="flex:1" onclick="exportAllRecs()">📤 Export All</button>
+        <input type="file" id="json-file" accept=".json,application/json" style="display:none" onchange="importRecsJSON(this)">
+      </div>
     </div>
   </div>
 </div>
@@ -735,18 +740,21 @@ function loadStoredRecordings(){
       el('rec-empty').style.display='none';
     }
   }catch(e){console.warn('Recordings not loaded:',e.message);}
-}   // which stop is waiting for a photo
+}
 let photoPreviewStopId=null;  // which stop photo is showing in overlay
 
 // ── Photo helpers ────────────────────────────────────
 function openCamera(){
+  clearTimeout(camPromptTimer);
   el('cam-input').value='';
   el('cam-input').click();
 }
 
 let pendingStopEvents=[];
+let camPromptTimer=null;   // auto-dismiss handle — cancelled when user interacts
 
 function toggleStopEvent(evt){
+  clearTimeout(camPromptTimer);
   const idx=pendingStopEvents.indexOf(evt);
   if(idx>=0)pendingStopEvents.splice(idx,1);
   else pendingStopEvents.push(evt);
@@ -755,9 +763,11 @@ function toggleStopEvent(evt){
 }
 
 function confirmStopEvents(){
+  clearTimeout(camPromptTimer);
   // Save selected events to this stop
   if(pendingPhotoStopIdx>=0&&pendingPhotoStopIdx<recStops.length){
     recStops[pendingPhotoStopIdx].events=[...pendingStopEvents];
+    saveRecordings();
   }
   pendingStopEvents=[];
   // Reset button states
@@ -772,17 +782,17 @@ function skipPhoto(){
 }
 
 async function handleCameraPhoto(input){
-  el('cam-prompt').classList.remove('on');
   const file=input.files[0];if(!file)return;
   const b64=await compressPhoto(file,800);
-  if(pendingPhotoStopIdx>=0&&pendingPhotoStopIdx<recStops.length){
+  if(b64&&pendingPhotoStopIdx>=0&&pendingPhotoStopIdx<recStops.length){
     recStops[pendingPhotoStopIdx].photo=b64;
     updateStopMarkerPhoto(pendingPhotoStopIdx);
     el('rec-sc').textContent=`${recStops.length} stop${recStops.length>1?'s':''} detected (${recStops.filter(s=>s.photo).length} with photo)`;
     speakText('Photo saved for stop '+(pendingPhotoStopIdx+1));
-  saveRecordings();
+    saveRecordings();
   }
-  pendingPhotoStopIdx=-1;
+  // Keep the prompt open and pendingPhotoStopIdx intact so the driver can
+  // still toggle 🚪/♿ events — they are saved when "✓ Done" is tapped.
 }
 
 function compressPhoto(file,maxPx=800){
@@ -979,7 +989,7 @@ function toggleMapStyle(){
     attribution:'&copy; OpenStreetMap &copy; CARTO',subdomains:'abcd',maxZoom:20
   }).addTo(map);
   // TileLayer goes under other layers — bring route/markers to front
-  [routeLayer,routeDoneLayer,routeAheadLayer,recLayer].forEach(l=>l?.bringToFront());
+  [routeLayer,routeRemainLayer,routeDoneLayer,routeAheadLayer,recLayer].forEach(l=>l?.bringToFront());
   Object.values(stopMarkers).forEach(m=>m?.bringToFront?.());
   const btn=el('map-style-btn');
   if(btn) btn.textContent=TILES[currentTile==='day'?'night':'day'].label;
@@ -1056,15 +1066,17 @@ function renderHudPanel(){
 // Compute angle difference (-180 to +180)
 function angleDiff(a,b){let d=b-a;while(d>180)d-=360;while(d<-180)d+=360;return d}
 
-// Classify angle difference into maneuver type
-function classifyTurn(diff,deg){
-  if(Math.abs(diff)<20) return{type:'straight',icon:'↑',label:'Continue straight',cls:'straight'};
-  if(diff>=150||diff<=-150) return{type:'uturn',icon:'↩',label:'Make a U-turn',cls:'turn'};
-  if(diff>=80)  return{type:'right',icon:'→',label:'Turn right',cls:'turn'};
-  if(diff>=30)  return{type:'sr',   icon:'↗',label:'Slight right',cls:'straight'};
-  if(diff<=-80) return{type:'left', icon:'←',label:'Turn left',cls:'turn'};
-  if(diff<=-30) return{type:'sl',   icon:'↖',label:'Slight left',cls:'straight'};
-  return{type:'straight',icon:'↑',label:'Continue straight',cls:'straight'};
+// Classify angle difference into maneuver type (spec §7.4)
+function classifyTurn(diff){
+  const a=Math.abs(diff),right=diff>0;
+  if(a<20)  return{type:'straight',icon:'↑',label:'Continue straight',cls:'straight'};
+  if(a>=150)return{type:'uturn',icon:'↩',label:'Make a U-turn',cls:'turn'};
+  if(a>=100)return right?{type:'shr',icon:'⤵',label:'Sharp right',cls:'turn'}
+                        :{type:'shl',icon:'⤴',label:'Sharp left',cls:'turn'};
+  if(a>=35) return right?{type:'right',icon:'→',label:'Turn right',cls:'turn'}
+                        :{type:'left',icon:'←',label:'Turn left',cls:'turn'};
+  return right?{type:'sr',icon:'↗',label:'Slight right',cls:'straight'}
+              :{type:'sl',icon:'↖',label:'Slight left',cls:'straight'};
 }
 
 // Build maneuvers array from route points
@@ -1075,22 +1087,32 @@ function buildManeuvers(pts){
   const MIN_TURN=28;   // degrees to call it a real turn
   const MIN_SEP=0.04;  // km minimum between maneuvers
 
-  let lastManeuverDist=0;
-  let cumDist=0;
+  if(pts.length>SMOOTH*2){
+    // Cumulative distance per point
+    const cums=[0];
+    for(let i=1;i<pts.length;i++)
+      cums.push(cums[i-1]+haversine(pts[i-1].lat,pts[i-1].lon,pts[i].lat,pts[i].lon));
 
-  for(let i=SMOOTH;i<pts.length-SMOOTH;i++){
-    // Cumulative distance
-    cumDist+=haversine(pts[i-1].lat,pts[i-1].lon,pts[i].lat,pts[i].lon);
+    // Smoothed bearing change at each point
+    const diffs=new Array(pts.length).fill(0);
+    for(let i=SMOOTH;i<pts.length-SMOOTH;i++){
+      const b1=brng(pts[i-SMOOTH].lat,pts[i-SMOOTH].lon,pts[i].lat,pts[i].lon);
+      const b2=brng(pts[i].lat,pts[i].lon,pts[i+SMOOTH].lat,pts[i+SMOOTH].lon);
+      diffs[i]=angleDiff(b1,b2);
+    }
 
-    const b1=brng(pts[i-SMOOTH].lat,pts[i-SMOOTH].lon,pts[i].lat,pts[i].lon);
-    const b2=brng(pts[i].lat,pts[i].lon,pts[i+SMOOTH].lat,pts[i+SMOOTH].lon);
-    const diff=angleDiff(b1,b2);
-
-    if(Math.abs(diff)>=MIN_TURN && cumDist-lastManeuverDist>=MIN_SEP){
-      const m=classifyTurn(diff);
+    // Register only LOCAL PEAKS of |diff| — taking the first threshold
+    // crossing splits a single 90° corner into two "slight" turns.
+    let lastManeuverDist=-Infinity;
+    for(let i=SMOOTH;i<pts.length-SMOOTH;i++){
+      const a=Math.abs(diffs[i]);
+      if(a<MIN_TURN)continue;
+      if(a<Math.abs(diffs[i-1])||a<Math.abs(diffs[i+1]))continue; // not the apex
+      if(cums[i]-lastManeuverDist<MIN_SEP)continue;
+      const m=classifyTurn(diffs[i]);
       if(m.type!=='straight'){
-        result.push({idx:i,lat:pts[i].lat,lon:pts[i].lon,distFromStart:cumDist,...m});
-        lastManeuverDist=cumDist;
+        result.push({idx:i,lat:pts[i].lat,lon:pts[i].lon,distFromStart:cums[i],...m});
+        lastManeuverDist=cums[i];
       }
     }
   }
@@ -1140,7 +1162,7 @@ function getNextManeuver(curIdx,curDistFromStart){
   if(!nextMan) return{dist:0,icon:'🏁',label:'Destination reached',detail:'',cls:'arrive',type:'arrive'};
   const distM=haversine(currentPos.lat,currentPos.lng,nextMan.lat,nextMan.lon)*1000;
   const afterTxt=upcoming[1]?`Then: ${upcoming[1].label}`:'';
-  return{dist:distM,icon:nextMan.icon,label:nextMan.label,detail:afterTxt,cls:nextMan.cls};
+  return{dist:distM,icon:nextMan.icon,label:nextMan.label,detail:afterTxt,cls:nextMan.cls,type:nextMan.type};
 }
 
 // Format distance for instruction
@@ -1153,6 +1175,7 @@ function fmtDist(m){
 // ── GPX LOAD ───────────────────────────────────────────
 function loadGPX(input){
   const file=input.files[0];if(!file)return;
+  if(/\.json$/i.test(file.name)){importRecsJSON(input);return}
   const fr=new FileReader();fr.onload=e=>parseGPX(e.target.result,file.name);fr.readAsText(file);
   input.value='';
 }
@@ -1202,10 +1225,15 @@ function parseGPX(xml,filename){
     const desc=w.querySelector('desc')?.textContent||'';
     const cmt =w.querySelector('cmt')?.textContent||'';
     let dur_s=0;
-    const m1=cmt.match(/duracao_s=(\d+)/);if(m1)dur_s=parseInt(m1[1]);
+    const durEl=w.querySelector('duracao_s');if(durEl)dur_s=parseInt(durEl.textContent)||0;
+    if(!dur_s){const m1=cmt.match(/duracao_s=(\d+)/);if(m1)dur_s=parseInt(m1[1]);}
     if(!dur_s){const m2=desc.match(/Dura[çc][aã]o:\s*([\d.]+)\s*min/i);if(m2)dur_s=Math.round(parseFloat(m2[1])*60)}
+    // Stop events (🚪/♿) — exported by this app, read back on load
+    const events=[];
+    if(w.querySelector('openDoor')||/openDoor/i.test(desc))events.push('openDoor');
+    if(w.querySelector('kneeling')||/kneeling/i.test(desc))events.push('kneeling');
     const id=i+1;
-    stops.push({id,name,lat,lng:lon,dur_s,elapsed:0,running:false,intervalId:null,state:'waiting',desc});
+    stops.push({id,name,lat,lng:lon,dur_s,elapsed:0,running:false,intervalId:null,state:'waiting',desc,events});
     stopMarkers[id]=L.marker([lat,lon],{icon:mkStopIcon(id,'waiting')}).addTo(map)
       .bindPopup(`<strong>${name}</strong>${dur_s?`<br><small style="color:#888;font-family:var(--mono)">⏱ ${fmtTime(dur_s)}</small>`:''}`,{maxWidth:180});
     renderCard(stops[stops.length-1]);
@@ -1378,6 +1406,10 @@ function startNav(){
   if(navActive)return;
   if(!navigator.geolocation){alert('Geolocation not available.');return}
   navActive=true;
+  // Reset per-run state — without this, a 2nd run of the same route
+  // starts with lastRouteIdx stuck at the end and matching never recovers.
+  lastRouteIdx=0;_speedBuf=[];_headBuf=[];lastGPSForSpeed=null;
+  lastVoiceKey='';lastVoiceManeuver='';
   el('btn-nav').style.display='none';el('btn-nav2').style.display='none';
   el('btn-stop').style.display='';el('btn-nav3').style.display='none';el('btn-stop3').style.display='';
   el('nav-hud').classList.add('on');el('hud-toggle').classList.add('on');
@@ -1397,6 +1429,8 @@ function stopNav(){
   if(window.speechSynthesis)window.speechSynthesis.cancel();
   el('hud-sp').classList.remove('on');hudPanelOpen=false;
   el('sum-bar').classList.remove('on');
+  // Reset map to north-up (spec 5.3)
+  setMapBearing(0);_lastBearing=0;
   shState='mid';applySheet();
   if(!isRec) releaseWakeLock();
   setGPS('wait','GPS stopped');
@@ -1408,8 +1442,7 @@ function onGPS(pos){
   if(heading!=null&&!isNaN(heading)) currentHeading=smoothHeading(heading)??heading
 
   // Speed: prefer GPS value, fallback to distance-based calculation
-  const calcSpd=calcSpeedFromPoints(lat,lng);
-    const rawSpd=speed!=null?speed*3.6:calcSpeedFromPoints(lat,lng,pos.timestamp);
+  const rawSpd=speed!=null?speed*3.6:calcSpeedFromPoints(lat,lng);
   const spdKmh=smoothSpeed(rawSpd);  // smoothed — for display
   const rawKmh=rawSpd!=null?rawSpd:0; // raw — for stop detection
   lastGPSForSpeed={lat,lng,t:Date.now()};
@@ -1461,8 +1494,8 @@ function onGPS(pos){
     lastVoiceKey='destination';speakText('You have arrived at your destination');
   }
 
-  // Arrival check
-  checkArrival(lat,lng);
+  // Arrival check (rawKmh passed in — it's local to this function)
+  checkArrival(lat,lng,rawKmh);
 
   // Recording stop detection
   if(isRec){
@@ -1488,7 +1521,7 @@ function onGPS(pos){
           recStopCandidate.marked=true;
           // Mark this as a stop waypoint
           const stopT=recStopCandidate.t; // when vehicle first stopped
-          const stopEntry={lat,lng,t:Date.now(),dur_s:0,startT:stopT};
+          const stopEntry={lat,lng,t:Date.now(),dur_s:0,startT:stopT,events:[],photo:null};
           recStops.push(stopEntry);
           // Visual marker on map
           const sNum=recStops.length;
@@ -1506,7 +1539,8 @@ function onGPS(pos){
           el('cam-stop-num').textContent=recStops.length;
           el('cam-prompt').classList.add('on');
           // Auto-dismiss prompt after 15s if user ignores
-          setTimeout(()=>{if(el('cam-prompt').classList.contains('on'))skipPhoto();},15000);
+          clearTimeout(camPromptTimer);
+          camPromptTimer=setTimeout(()=>{if(el('cam-prompt').classList.contains('on'))skipPhoto();},15000);
         }
       }
     } else {
@@ -1551,7 +1585,15 @@ function nearestRoutePoint(lat,lng){
 
   let minIdx=from, minDist=Infinity;
   for(let i=from;i<=to;i++){
-    const d=haversine(lat,lng,routePts[i].lat,routePts[i].lon);
+    let d=haversine(lat,lng,routePts[i].lat,routePts[i].lon);
+    // Direction penalty (spec 7.1): up to 60 m (0.06 km) for route points
+    // whose local bearing opposes the vehicle heading — disambiguates
+    // bidirectional roads driven in both directions on the same route.
+    if(currentHeading!=null&&i<routePts.length-1){
+      const segB=brng(routePts[i].lat,routePts[i].lon,routePts[i+1].lat,routePts[i+1].lon);
+      const dAng=Math.abs(angleDiff(segB,currentHeading)); // 0..180
+      d+=(dAng/180)*0.06;
+    }
     if(d<minDist){minDist=d;minIdx=i;}
   }
 
@@ -1586,6 +1628,16 @@ function updRouteRemaining(nearIdx,distFromStart){
 
 function updInstruction(nearIdx,distFromStart){
   if(!currentPos)return;
+  // GPS-only mode (Start GPS without a route loaded)
+  if(!routePts.length){
+    el('hud-icon-arrow').textContent='📡';
+    el('hud-icon').className='hud-instr-icon straight';
+    el('hud-icon-lbl').textContent='GPS';
+    el('hud-dist').textContent='';
+    el('hud-action').textContent='No route loaded';
+    el('hud-detail').textContent='Load a GPX or recording to navigate';
+    return;
+  }
   const{dist,icon,label,detail,cls,type}=getNextManeuver(nearIdx,distFromStart);
   const distM=dist;
 
@@ -1595,7 +1647,7 @@ function updInstruction(nearIdx,distFromStart){
 
   // Short label under icon
   const iconLabels={straight:'STRAIGHT',right:'RIGHT',left:'LEFT',sr:'SLIGHT RT',
-    sl:'SLIGHT LT',uturn:'U-TURN',stop:'STOP',arrive:'ARRIVE'};
+    sl:'SLIGHT LT',shr:'SHARP RT',shl:'SHARP LT',uturn:'U-TURN',stop:'STOP',arrive:'ARRIVE'};
   el('hud-icon-lbl').textContent=iconLabels[type]||'';
 
   // ── Distance with urgency color ──
@@ -1604,7 +1656,16 @@ function updInstruction(nearIdx,distFromStart){
   distEl.className='hud-instr-dist '+(distM>200?'far':distM>50?'medium':'close');
 
   el('hud-action').textContent=label;
-  el('hud-detail').textContent='';
+  el('hud-detail').textContent=detail||'';
+
+  // ── Route progress strip (% done + distance remaining) ──
+  if(totalRouteDist>0){
+    const pct=Math.max(0,Math.min(100,(distFromStart/totalRouteDist)*100));
+    el('hud-pct').textContent=Math.round(pct)+'%';
+    el('hud-sfill').style.width=pct.toFixed(1)+'%';
+    const leftKm=Math.max(0,totalRouteDist-distFromStart);
+    el('hud-left').textContent=(leftKm>=1?leftKm.toFixed(1)+' km':Math.round(leftKm*1000)+' m')+' remaining';
+  }
 
   // ── Next-after-next preview ──
   const upcoming=maneuvers.filter(m=>m.idx>nearIdx&&m.distFromStart>distFromStart);
@@ -1629,7 +1690,8 @@ function updInstruction(nearIdx,distFromStart){
 }
 
 // ── ARRIVAL / DEPARTURE ────────────────────────────────
-function checkArrival(lat,lng){
+function checkArrival(lat,lng,rawKmh){
+  if(!stops.length)return;
   const radius=+el('rng-radius').value;
   const autoStart=+el('rng-auto').value===1;
   const autoStop=+el('rng-autostop').value===1;
@@ -1688,7 +1750,7 @@ function checkArrival(lat,lng){
       if(!hudPanelOpen) toggleHudPanel();
       else renderHudPanel();
 
-    } else if(distM>radius*1.3&&insideStop.has(s.id)){
+    } else if(distM>effectiveRadius*1.2&&insideStop.has(s.id)){
       insideStop.delete(s.id);
       if(autoStop&&s.running){
         pauseTimer(s.id);markDone(s.id);
@@ -1717,6 +1779,8 @@ function startRec(){
   el('rec-ind').classList.add('on');
   el('btn-rec').className='btn rec-on';el('btn-rec').textContent='⏹ Recording';
   el('btn-nav').disabled=true;
+  if(el('btn-nav2'))el('btn-nav2').disabled=true;
+  if(el('btn-nav3'))el('btn-nav3').disabled=true;
 
   if(watchId===null){
     watchId=navigator.geolocation.watchPosition(onGPS,onGPSErr,{enableHighAccuracy:true,maximumAge:1000,timeout:20000});
@@ -1734,8 +1798,11 @@ function stopRec(){
   recStopCandidate=null;
   el('rec-ind').classList.remove('on');
   el('btn-rec').className='btn rec';el('btn-rec').textContent='⏺ Rec';
-  el('btn-nav').disabled=false;
-  if(!navActive) releaseWakeLock();
+  const hasRoute=routePts.length>1; // startRec clears the route — Nav needs one
+  el('btn-nav').disabled=!hasRoute;
+  if(el('btn-nav2'))el('btn-nav2').disabled=!hasRoute;
+  if(el('btn-nav3'))el('btn-nav3').disabled=false;
+  if(!navActive){releaseWakeLock();setMapBearing(0);_lastBearing=0;}
 
   if(!navActive&&watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null}
 
@@ -1795,6 +1862,7 @@ function loadRec(idx){
     const ll=pts.map(p=>[p.lat,p.lon]);
     routeLayer    =L.polyline(ll,{color:'rgba(88,166,255,.25)',weight:6}).addTo(map);
     routeAheadLayer=L.polyline(ll,{color:'#58a6ff',weight:4}).addTo(map);
+    routeRemainLayer=L.polyline([],{color:'rgba(88,166,255,.35)',weight:3,opacity:.6,dashArray:'6 4'}).addTo(map);
     routeDoneLayer =L.polyline([],{color:'#444',weight:4}).addTo(map);
 
     // ── Stops ─────────────────────────────────────────
@@ -1818,7 +1886,7 @@ function loadRec(idx){
       const m=L.marker([+s.lat,+s.lng],{icon,zIndexOffset:900}).addTo(map);
       const navStop={id,name:`Stop ${id}`,lat:+s.lat,lng:+s.lng,
         dur_s:s.dur_s||0,elapsed:0,running:false,intervalId:null,state:'waiting',
-        photo:s.photo||null};
+        photo:s.photo||null,events:s.events||[]};
       stops.push(navStop);
       stopMarkers[id]=m;
       if(sl) renderCard(navStop);
@@ -1862,18 +1930,23 @@ function dlRecGPX(idx){
   let xml=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="GPX Navigator Pro">\n<metadata><name>${rec.name}</name><time>${(rec.date instanceof Date?rec.date:new Date(rec.date)).toISOString()}</time></metadata>\n`;
   // Waypoints (detected stops with duration)
   rec.stops.forEach((s,i)=>{
-    xml+=`<wpt lat="${s.lat.toFixed(8)}" lon="${s.lng.toFixed(8)}">\n`;
+    const evts=s.events||[];
+    const evtTxt=evts.length?' · '+evts.join(', '):'';
+    xml+=`<wpt lat="${(+s.lat).toFixed(8)}" lon="${(+s.lng).toFixed(8)}">\n`;
     xml+=`  <name>Stop ${i+1}</name>\n`;
-    xml+=`  <desc>Duration: ${s.dur_s?fmtTime(s.dur_s):'unknown'}</desc>\n`;
+    xml+=`  <desc>Duration: ${s.dur_s?fmtTime(s.dur_s):'unknown'}${evtTxt}</desc>\n`;
     xml+=`  <cmt>duracao_s=${s.dur_s||0}</cmt>\n`;
+    xml+=`  <duracao_s>${s.dur_s||0}</duracao_s>\n`;
+    if(evts.includes('openDoor'))xml+=`  <openDoor>1</openDoor>\n`;
+    if(evts.includes('kneeling'))xml+=`  <kneeling>1</kneeling>\n`;
     xml+=`  <time>${new Date(s.t).toISOString()}</time>\n`;
     xml+=`</wpt>\n`;
   });
   // Track
   xml+=`<trk><name>${rec.name}</name><trkseg>\n`;
   rec.points.forEach(p=>{
-    xml+=`<trkpt lat="${p.lat.toFixed(8)}" lon="${p.lng.toFixed(8)}">`;
-    if(p.alt!=null)xml+=`<ele>${p.alt.toFixed(1)}</ele>`;
+    xml+=`<trkpt lat="${(+p.lat).toFixed(8)}" lon="${(+p.lng).toFixed(8)}">`;
+    if(p.alt!=null)xml+=`<ele>${(+p.alt).toFixed(1)}</ele>`;
     xml+=`<time>${new Date(p.t).toISOString()}</time>`;
     if(p.speed!=null)xml+=`<extensions><speed>${(p.speed*3.6).toFixed(2)}</speed></extensions>`;
     xml+=`</trkpt>\n`;
@@ -1884,8 +1957,53 @@ function dlRecGPX(idx){
   a.download=rec.name.replace(/[^a-z0-9]/gi,'_')+'.gpx';a.click();
 }
 
+// ── JSON export / import of all recordings (spec §13) ──
+function exportAllRecs(){
+  const recs=savedRecs.filter(Boolean);
+  if(!recs.length){alert('No recordings to export.');return}
+  const data=JSON.stringify(recs.map(r=>({
+    name:r.name, dist:+(r.dist??0)||0,
+    date:r.date instanceof Date?r.date.toISOString():r.date,
+    points:r.points, stops:r.stops
+  })));
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));
+  a.download=`gpx_nav_recordings_${new Date().toISOString().slice(0,10)}.json`;a.click();
+}
+
+function importRecsJSON(input){
+  const file=input.files[0];if(!file)return;
+  const fr=new FileReader();
+  fr.onload=e=>{
+    try{
+      let arr=JSON.parse(e.target.result);
+      if(!Array.isArray(arr))arr=[arr];
+      let n=0;
+      arr.forEach(r=>{
+        if(!r||!Array.isArray(r.points)||r.points.length<2)return;
+        const rec={
+          name:r.name||'Imported route', dist:+(r.dist??0)||0,
+          date:new Date(r.date||Date.now()),
+          points:r.points, stops:Array.isArray(r.stops)?r.stops:[]
+        };
+        savedRecs.push(rec);renderRecCard(rec,savedRecs.length-1);n++;
+      });
+      if(n){
+        el('rec-badge').textContent=` (${savedRecs.filter(Boolean).length})`;
+        el('rec-empty').style.display='none';
+        saveRecordings();switchTab('gravadas');
+        alert(`${n} recording${n>1?'s':''} imported.`);
+      }else alert('No valid recordings found in this JSON.');
+    }catch(err){alert('Invalid JSON file: '+err.message);}
+  };
+  fr.readAsText(file);input.value='';
+}
+
 function delRec(idx){
+  const rec=savedRecs[idx];
+  if(rec&&!confirm(`Delete "${rec.name}"?`))return;
   savedRecs[idx]=null;el(`rcard-${idx}`)?.remove();
+  saveRecordings(); // persist — otherwise the recording reappears after reload
   const n=savedRecs.filter(Boolean).length;
   el('rec-badge').textContent=n?` (${n})`:'';
   if(!n)el('rec-empty').style.display='';
