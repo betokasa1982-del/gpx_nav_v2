@@ -65,8 +65,13 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
 
 /* ── MAP ── */
 .map-wrap{position:relative;flex:1;min-height:0;overflow:hidden}
-/* Map is larger than viewport so rotated corners stay filled with tiles */
-#map{width:100%;height:100%;min-height:200px;background:#1a1f2e}
+/* Map is 2x the viewport so heading-up rotation never exposes empty corners.
+   The visible area is the central quarter; controls are offset back inside. */
+#map{position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:#1a1f2e}
+#map .leaflet-bottom{bottom:25%}
+#map .leaflet-top{top:25%}
+#map .leaflet-left{left:25%}
+#map .leaflet-right{right:25%}
 .leaflet-map-pane{transition:transform 0.35s linear!important}
 
 /* ════════════════════════════════════════
@@ -588,7 +593,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
 
     <!-- ROTA PANE -->
     <div class="pane active" id="pane-rota" style="overflow-y:auto">
-      <div class="upload-zone">
+      <div class="upload-zone" id="upload-zone">
         <input type="file" accept=".gpx" onchange="loadGPX(this)">
         <div class="icon">📂</div>
         <strong>Load GPX</strong>
@@ -624,8 +629,8 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
           <span id="gps-text">GPS não iniciado</span>
         </div>
         <div class="nav-field"><label>Raio chegada (m)</label>
-          <input type="range" min="10" max="300" value="80" id="rng-radius" oninput="el('val-radius').textContent=this.value+'m'">
-          <span class="val" id="val-radius">80m</span></div>
+          <input type="range" min="5" max="100" value="10" id="rng-radius" oninput="el('val-radius').textContent=this.value+'m'">
+          <span class="val" id="val-radius">10m</span></div>
         <div class="nav-field"><label>Auto-iniciar timer</label>
           <input type="range" min="0" max="1" step="1" value="1" id="rng-auto" oninput="el('val-auto').textContent=['Não','Sim'][+this.value]">
           <span class="val" id="val-auto">Sim</span></div>
@@ -710,6 +715,35 @@ const insideStop=new Set();
 let isRec=false, recPoints=[], recStops=[], recStopCandidate=null;
 let savedRecs=[];
 let pendingPhotoStopIdx=-1;
+
+// ── Settings persistence (spec §3.2) ─────────────────
+const SETTINGS_KEY='gpx-nav-settings';
+const SETTING_IDS=['rng-radius','rng-auto','rng-autostop','rng-follow','rng-zoom','rng-recvel','rng-recdur'];
+function saveSettings(){
+  try{
+    const s={};SETTING_IDS.forEach(id=>{const e=el(id);if(e)s[id]=e.value;});
+    localStorage.setItem(SETTINGS_KEY,JSON.stringify(s));
+  }catch(e){}
+}
+function refreshSettingLabels(){
+  const yn=v=>['Não','Sim'][+v]||'—';
+  if(el('val-radius'))el('val-radius').textContent=el('rng-radius').value+'m';
+  if(el('val-auto'))el('val-auto').textContent=yn(el('rng-auto').value);
+  if(el('val-autostop'))el('val-autostop').textContent=yn(el('rng-autostop').value);
+  if(el('val-follow'))el('val-follow').textContent=yn(el('rng-follow').value);
+  if(el('val-zoom'))el('val-zoom').textContent=el('rng-zoom').value;
+  if(el('val-recvel'))el('val-recvel').textContent=el('rng-recvel').value;
+  if(el('val-recdur'))el('val-recdur').textContent=el('rng-recdur').value+'s';
+}
+function loadSettings(){
+  try{
+    const s=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}');
+    SETTING_IDS.forEach(id=>{const e=el(id);if(e&&s[id]!=null)e.value=s[id];});
+  }catch(e){}
+  refreshSettingLabels();
+  SETTING_IDS.forEach(id=>el(id)?.addEventListener('change',saveSettings));
+}
+loadSettings();
 
 // ── Persist recordings across page reloads ───────────
 function saveRecordings(){
@@ -977,6 +1011,17 @@ const TILES={
     label:'🌙'
   }
 };
+// Fit bounds compensating the 2x oversized container: fitBounds fills the
+// whole (invisible) container, so zoom out 1 level to fit the visible quarter.
+function fitRouteBounds(b){
+  try{
+    if(!b||!b.isValid())return false;
+    map.fitBounds(b,{padding:[20,20]});
+    map.setZoom(map.getZoom()-1,{animate:false});
+    return true;
+  }catch(e){return false;}
+}
+
 let currentTile='day';
 let tileLayer=L.tileLayer(TILES.day.url,{
   attribution:'&copy; OpenStreetMap &copy; CARTO',subdomains:'abcd',maxZoom:20
@@ -1128,7 +1173,7 @@ function buildManeuvers(pts){
 
 // Find maneuver to show based on current route index
 function getNextManeuver(curIdx,curDistFromStart){
-  const radius=+el('rng-radius').value||80;
+  const radius=+el('rng-radius').value||10;
 
   // Find nearest non-done stop within 4x radius
   const nextStop=stops.filter(s=>s.state!=='done').find(s=>{
@@ -1210,7 +1255,7 @@ function parseGPX(xml,filename){
   routeAheadLayer=L.polyline(ll,{color:'#f0a500',weight:5,opacity:.95}).addTo(map);
   routeRemainLayer=L.polyline([],{color:'rgba(240,165,0,.3)',weight:3,opacity:.6,dashArray:'6 4'}).addTo(map);
   routeDoneLayer =L.polyline([],{color:'#555',weight:4,opacity:.5}).addTo(map);
-  map.fitBounds(routeLayer.getBounds(),{padding:[20,20]});
+  fitRouteBounds(routeLayer.getBounds());
 
   // Start / end markers
   const dot=c=>L.divIcon({html:`<div style="background:${c};width:14px;height:14px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 8px ${c}"></div>`,className:'',iconAnchor:[7,7]});
@@ -1255,11 +1300,12 @@ function parseGPX(xml,filename){
   el('h-stops').textContent=`0/${stops.length}`;
   el('stops-badge').textContent=stops.length?` (${stops.length})`:'';
   el('no-route').style.display='none';el('route-details').style.display='flex';
+  if(el('upload-zone'))el('upload-zone').style.display='none';
   if(el('stops-empty'))el('stops-empty').style.display=stops.length?'none':'';
   el('btn-nav').disabled=false;el('btn-nav2').disabled=false;
   el('peek-icon').textContent='🗺️';el('peek-name').textContent=filename;
   el('peek-sub').textContent=`${stops.length} stops · ${maneuvers.filter(m=>m.type!=='arrive').length} maneuvers`;
-  updSummaryBar();switchTab('rota');shState='mid';applySheet();
+  updSummaryBar();switchTab('rota');shState='peek';applySheet();
 }
 
 // ── STOP CARDS ─────────────────────────────────────────
@@ -1372,7 +1418,9 @@ function resetTimer(id){
 }
 function markDone(id){
   pauseTimer(id);const s=stops.find(s=>s.id===id);if(!s)return;
-  s.state='done';insideStop.delete(id);updCardState(s);updSummaryBar();
+  s.state='done';insideStop.delete(id);
+  departGate={lat:s.lat,lng:s.lng}; // next co-located stop must wait for departure
+  updCardState(s);updSummaryBar();
   if(hudPanelOpen)renderHudPanel();
 }
 function startAllTimers(){stops.forEach(s=>{if(s.state!=='done')startTimer(s.id)})}
@@ -1470,7 +1518,7 @@ function onGPS(pos){
 
   if(+el('rng-follow').value===1){
     const zoom=+el('rng-zoom').value;
-    if((navActive||isRec)&&currentHeading!=null&&map.setBearing){
+    if((navActive||isRec)&&currentHeading!=null&&typeof DOMMatrix!=='undefined'){
       // Heading-up: rotate map to put direction of travel at top
       setMapBearing(-currentHeading); // negative = rotate map opposite to heading
       // Offset center slightly behind vehicle (show more route ahead)
@@ -1690,72 +1738,73 @@ function updInstruction(nearIdx,distFromStart){
 }
 
 // ── ARRIVAL / DEPARTURE ────────────────────────────────
+// Departure gate: set when a stop completes. Blocks the NEXT co-located stop
+// (same physical spot — multi-lap cycles) from arriving until the vehicle
+// has actually left. Cleared once distance from the gate exceeds the radius.
+let departGate=null;
+
 function checkArrival(lat,lng,rawKmh){
   if(!stops.length)return;
   const radius=+el('rng-radius').value;
   const autoStart=+el('rng-auto').value===1;
   const autoStop=+el('rng-autostop').value===1;
+  // Speed-aware arrival radius: when slowing down near stop, expand detection zone
+  const effectiveRadius=(rawKmh!=null&&rawKmh<20)?radius*1.8:radius;
 
-  // ── Find the single CLOSEST non-done stop for photo preview ──
-  // (forEach would call showStopPhoto for every stop in range,
-  //  showing the LAST one instead of the nearest/correct one)
-  let nearestStop=null, nearestDist=Infinity;
-  stops.forEach(s=>{
-    if(s.state==='done')return;
-    const d=haversine(lat,lng,s.lat,s.lng)*1000;
-    if(d<nearestDist){nearestDist=d;nearestStop=s;}
-  });
+  // Clear the gate once the vehicle physically left the completed stop
+  if(departGate&&haversine(lat,lng,departGate.lat,departGate.lng)*1000>radius)
+    departGate=null;
 
-  // Pre-show photo + announce events of the nearest upcoming stop at 200m
-  if(nearestStop&&nearestDist<=200&&nearestDist>radius){
-    // Photo preview
-    if(nearestStop.photo&&nearestStop.photo.length>10&&photoPreviewStopId!==nearestStop.id){
-      showStopPhoto(nearestStop,nearestDist);
+  // ── SEQUENCE-AWARE ARRIVAL: only the NEXT pending stop can arrive ──
+  // Test cycles visit the same physical location on every lap; distance-only
+  // matching marked ALL co-located stops as arrived (and completed) at once.
+  const next=stops.find(s=>s.state!=='done');
+  if(next){
+    const dNext=haversine(lat,lng,next.lat,next.lng)*1000;
+
+    // Pre-show photo + announce events of the next stop at 200m
+    if(dNext<=200&&dNext>effectiveRadius){
+      if(next.photo&&next.photo.length>10&&photoPreviewStopId!==next.id){
+        showStopPhoto(next,dNext);
+      }
+      const evtKey='evt_ann_'+next.id;
+      if(next.events?.length&&lastVoiceKey!==evtKey){
+        lastVoiceKey=evtKey;
+        const msgs=[];
+        if(next.events.includes('openDoor'))msgs.push('open doors');
+        if(next.events.includes('kneeling'))msgs.push('kneeling');
+        if(msgs.length)speakText(`Stop ${next.id}: ${msgs.join(' and ')} required`);
+      }
     }
-    // Announce events only once per stop approach
-    const evtKey='evt_ann_'+nearestStop.id;
-    if(nearestStop.events?.length&&lastVoiceKey!==evtKey){
-      lastVoiceKey=evtKey;
-      const msgs=[];
-      if(nearestStop.events.includes('openDoor'))msgs.push('open doors');
-      if(nearestStop.events.includes('kneeling'))msgs.push('kneeling');
-      if(msgs.length)speakText(`Stop ${nearestStop.id}: ${msgs.join(' and ')} required`);
+
+    // Gate check: same-spot next-lap stop must wait for a real departure first
+    const gated=departGate&&haversine(departGate.lat,departGate.lng,next.lat,next.lng)*1000<30;
+
+    if(!gated&&dNext<=effectiveRadius&&!insideStop.has(next.id)){
+      insideStop.add(next.id);
+      showAlert('arrived',`📍 ${next.name}${next.dur_s?' · '+fmtTime(next.dur_s):''}`);
+      if(next.photo&&next.photo.length>10) showStopPhoto(next,0);
+      next.state='current';updCardState(next);
+      if(autoStart&&!next.running)startTimer(next.id);
+      speakText(`Arrived at stop ${next.id}${next.dur_s?', planned '+fmtTime(next.dur_s):''}`);
+      lastVoiceKey='';
+      el(`sc-${next.id}`)?.scrollIntoView({behavior:'smooth',block:'nearest'});
+      if(!hudPanelOpen) toggleHudPanel();
+      else renderHudPanel();
     }
   }
 
-  // ── Arrival / departure checks ────────────────────────────
-  // Speed-aware arrival radius: when slowing down near stop, expand detection zone
-  const effectiveRadius=Math.max(radius,
-    (rawKmh!=null&&rawKmh<20)?radius*1.8:radius
-  );
-
-  stops.forEach(s=>{
-    if(s.state==='done')return;
+  // ── DEPARTURE: any stop the vehicle is currently inside ──
+  [...insideStop].forEach(id=>{
+    const s=stops.find(x=>x.id===id);
+    if(!s){insideStop.delete(id);return;}
     const distM=haversine(lat,lng,s.lat,s.lng)*1000;
-
-    if(distM<=effectiveRadius&&!insideStop.has(s.id)){
-      insideStop.add(s.id);
-      showAlert('arrived',`📍 ${s.name}${s.dur_s?' · '+fmtTime(s.dur_s):''}`);
-      // Only show photo for the NEAREST stop — not every stop within radius.
-      // (multiple stops may be in radius simultaneously; last forEach call would win)
-      if(s.id===nearestStop?.id){
-        if(s.photo&&s.photo.length>10) showStopPhoto(s,0);
-        else closeStopPhoto();
-      }
-      s.state='current';updCardState(s);
-      if(autoStart&&!s.running)startTimer(s.id);
-      speakText(`Arrived at stop ${s.id}${s.dur_s?', planned '+fmtTime(s.dur_s):''}`);
-      lastVoiceKey='';
-      el(`sc-${s.id}`)?.scrollIntoView({behavior:'smooth',block:'nearest'});
-      if(!hudPanelOpen) toggleHudPanel();
-      else renderHudPanel();
-
-    } else if(distM>effectiveRadius*1.2&&insideStop.has(s.id)){
-      insideStop.delete(s.id);
+    if(distM>effectiveRadius*1.2){
+      insideStop.delete(id);
       if(autoStop&&s.running){
-        pauseTimer(s.id);markDone(s.id);
+        pauseTimer(id);markDone(id);
         showAlert('departed',`✓ ${s.name} · ${fmtTime(s.elapsed)}`);
-        if(photoPreviewStopId===s.id)closeStopPhoto();
+        if(photoPreviewStopId===id)closeStopPhoto();
       }
     }
   });
@@ -1776,6 +1825,7 @@ function startRec(){
   routePts=[];maneuvers=[];totalRouteDist=0;
 
   isRec=true;recPoints=[];recStops=[];recStopCandidate=null;
+  shState='hidden';applySheet();
   el('rec-ind').classList.add('on');
   el('btn-rec').className='btn rec-on';el('btn-rec').textContent='⏹ Recording';
   el('btn-nav').disabled=true;
@@ -1816,7 +1866,10 @@ function stopRec(){
   el('rec-badge').textContent=` (${savedRecs.length})`;
   el('rec-empty').style.display='none';
   saveRecordings(); // persist to localStorage
-  switchTab('gravadas');
+  // Auto-load the recording just saved: route + stops appear on the map
+  // and ▶ Nav is ready — no need to hunt for the Load button.
+  loadRec(idx);
+  showAlert('arrived',`✓ Recording saved & loaded · ${recStops.length} stop${recStops.length===1?'':'s'} · tap ▶ Nav`);
 }
 
 function renderRecCard(rec,idx){
@@ -1836,6 +1889,7 @@ function renderRecCard(rec,idx){
     <div class="rec-card-btns">
       <button class="btn go"      style="flex:1;font-size:11px;padding:8px 4px" onclick="loadRec(${idx})">📂 Load</button>
       <button class="btn primary" style="flex:1;font-size:11px;padding:8px 4px" onclick="dlRecGPX(${idx})">↓ GPX</button>
+      <button class="btn"         style="flex:1;font-size:11px;padding:8px 4px;border-color:var(--blue);color:var(--blue)" onclick="shareRec(${idx})">📤 JSON</button>
       <button class="btn"         style="font-size:11px;padding:8px 8px;border-color:var(--red);color:var(--red)" onclick="delRec(${idx})">✕</button>
     </div>`;
   list.insertBefore(card,list.firstChild);
@@ -1906,8 +1960,7 @@ function loadRec(idx){
     maneuvers=buildManeuvers(routePts);
     try{
       const b=routeLayer.getBounds();
-      if(b&&b.isValid()) map.fitBounds(b,{padding:[20,20]});
-      else map.setView([pts[0].lat,pts[0].lon],15);
+      if(!fitRouteBounds(b)) map.setView([pts[0].lat,pts[0].lon],15);
     }catch(fe){map.setView([pts[0].lat,pts[0].lon],15);}
     el('btn-nav').disabled=false;
     try{if(el('btn-nav2'))el('btn-nav2').disabled=false;}catch(e){}
@@ -1916,8 +1969,9 @@ function loadRec(idx){
     el('peek-sub').textContent=`${(rec.dist||0).toFixed(2)} km · ${stops.length} stops · tap ▶ Nav to start`;
     el('no-route') && (el('no-route').style.display='none');
     el('route-details') && (el('route-details').style.display='flex');
+    if(el('upload-zone'))el('upload-zone').style.display='none';
     updSummaryBar();
-    switchTab('rota');shState='mid';applySheet();
+    switchTab('rota');shState='peek';applySheet();
   }catch(err){
     console.error('loadRec failed:',err);
     // Show which step failed + the error
@@ -1958,14 +2012,34 @@ function dlRecGPX(idx){
 }
 
 // ── JSON export / import of all recordings (spec §13) ──
+function recToPlain(r){
+  return{name:r.name, dist:+(r.dist??0)||0,
+    date:r.date instanceof Date?r.date.toISOString():r.date,
+    points:r.points, stops:r.stops};
+}
+
+// Share ONE recording as .json — uses Android share sheet (WhatsApp/Drive/
+// e-mail) when available, falls back to a normal download.
+async function shareRec(idx){
+  const rec=savedRecs[idx];if(!rec)return;
+  const json=JSON.stringify([recToPlain(rec)]);
+  const fname=rec.name.replace(/[^a-z0-9]/gi,'_')+'.json';
+  try{
+    const file=new File([json],fname,{type:'application/json'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:rec.name});
+      return;
+    }
+  }catch(e){if(e.name==='AbortError')return;/* user cancelled */}
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));
+  a.download=fname;a.click();
+}
+
 function exportAllRecs(){
   const recs=savedRecs.filter(Boolean);
   if(!recs.length){alert('No recordings to export.');return}
-  const data=JSON.stringify(recs.map(r=>({
-    name:r.name, dist:+(r.dist??0)||0,
-    date:r.date instanceof Date?r.date.toISOString():r.date,
-    points:r.points, stops:r.stops
-  })));
+  const data=JSON.stringify(recs.map(recToPlain));
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));
   a.download=`gpx_nav_recordings_${new Date().toISOString().slice(0,10)}.json`;a.click();
@@ -1978,13 +2052,24 @@ function importRecsJSON(input){
     try{
       let arr=JSON.parse(e.target.result);
       if(!Array.isArray(arr))arr=[arr];
+      // Normalisers — tolerant to script-generated files:
+      // lat/lon or lat/lng; t as ISO string or epoch ms; dist optional.
+      const nT=t=>typeof t==='string'?(Date.parse(t)||Date.now()):(+t||Date.now());
+      const nPt=p=>({lat:+p.lat,lng:+(p.lng??p.lon),t:nT(p.t)});
+      const nSt=s=>({lat:+s.lat,lng:+(s.lng??s.lon),t:nT(s.t),
+        dur_s:+(s.dur_s??s.duracao_s??0)||0,
+        photo:s.photo||null,events:Array.isArray(s.events)?s.events:[]});
       let n=0;
       arr.forEach(r=>{
         if(!r||!Array.isArray(r.points)||r.points.length<2)return;
+        const points=r.points.map(nPt).filter(p=>!isNaN(p.lat)&&!isNaN(p.lng));
+        if(points.length<2)return;
+        const stops=(Array.isArray(r.stops)?r.stops:[]).map(nSt).filter(s=>!isNaN(s.lat)&&!isNaN(s.lng));
         const rec={
-          name:r.name||'Imported route', dist:+(r.dist??0)||0,
+          name:r.name||'Imported route',
+          dist:+(r.dist??0)||calcDistRaw(points),
           date:new Date(r.date||Date.now()),
-          points:r.points, stops:Array.isArray(r.stops)?r.stops:[]
+          points,stops
         };
         savedRecs.push(rec);renderRecCard(rec,savedRecs.length-1);n++;
       });
