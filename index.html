@@ -70,6 +70,47 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
 .score-badge.m3{background:rgba(240,165,0,.18);color:#f0a500}
 .score-badge.m0{background:rgba(248,81,73,.2);color:#f85149}
 
+/* ── NEXT STOP CARD ── */
+.nsc{position:absolute;right:10px;top:215px;width:195px;
+  background:rgba(13,17,23,.95);border:1px solid var(--border);
+  border-left:3px solid var(--accent);border-radius:12px;
+  padding:10px 12px;pointer-events:auto;display:none;z-index:905;
+  box-shadow:0 4px 18px rgba(0,0,0,.45)}
+.nsc-head{display:flex;justify-content:space-between;font-size:10px;
+  letter-spacing:1.5px;color:var(--muted);font-weight:800;font-family:var(--mono)}
+.nsc-dist{font-family:var(--mono);font-size:34px;font-weight:800;
+  color:var(--accent);line-height:1.15;margin:3px 0}
+.nsc.atstop .nsc-dist{color:var(--green,#3fb950)}
+.nsc.atstop{border-left-color:#3fb950}
+.nsc-row{display:flex;justify-content:space-between;align-items:center;
+  font-size:13px;margin-top:2px;color:var(--fg,#e6edf3)}
+.nsc-evt{font-size:17px;letter-spacing:2px}
+.nsc-leg{color:var(--blue,#58a6ff);font-family:var(--mono);font-size:12px;font-weight:700}
+.nsc-photo{width:100%;height:96px;object-fit:cover;border-radius:8px;
+  margin-top:8px;border:1px solid var(--border);cursor:pointer}
+@keyframes mkpg{0%{box-shadow:0 0 0 0 rgba(63,185,80,.65)}70%{box-shadow:0 0 0 16px rgba(63,185,80,0)}100%{box-shadow:0 0 0 0 rgba(63,185,80,0)}}
+@keyframes mkpa{0%{box-shadow:0 0 0 0 rgba(240,165,0,.65)}70%{box-shadow:0 0 0 16px rgba(240,165,0,0)}100%{box-shadow:0 0 0 0 rgba(240,165,0,0)}}
+.mk-pulse-g{animation:mkpg 1.6s ease-out infinite}
+.mk-pulse-a{animation:mkpa 1.6s ease-out infinite}
+
+/* ── 10" TABLET (landscape ≥900px): larger nav typography & targets ── */
+@media(min-width:900px){
+  .hud-instr-icon{width:118px;font-size:72px}
+  .hud-icon-lbl{font-size:13px}
+  .hud-dist{font-size:42px}
+  .hud-action{font-size:25px}
+  .hud-detail{font-size:15px}
+  .hud-spd-val{font-size:42px}
+  .hud-tgt{font-size:14px}
+  .stab{font-size:12px;padding:13px 2px}
+  .nsc{width:256px;top:235px;padding:12px 14px}
+  .nsc-dist{font-size:50px}
+  .nsc-row{font-size:15px}
+  .nsc-evt{font-size:21px}
+  .nsc-leg{font-size:14px}
+  .nsc-photo{height:140px}
+}
+
 /* ── MAP ── */
 .map-wrap{position:relative;flex:1;min-height:0;overflow:hidden}
 /* Map is 2x the viewport so heading-up rotation never exposes empty corners.
@@ -472,6 +513,15 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
   <!-- ══════════════════ NAV HUD ══════════════════ -->
   <div class="nav-hud" id="nav-hud">
 
+    <!-- Next Stop Card: the driver's primary reference on 10" tablets -->
+    <div class="nsc" id="nsc">
+      <div class="nsc-head"><span id="nsc-title">NEXT STOP</span><span id="nsc-count">–/–</span></div>
+      <div class="nsc-dist" id="nsc-dist">—</div>
+      <div class="nsc-row"><span id="nsc-plan">⏱ --:--</span><span id="nsc-evt" class="nsc-evt"></span></div>
+      <div class="nsc-row"><span class="nsc-leg" id="nsc-leg"></span></div>
+      <img class="nsc-photo" id="nsc-photo" style="display:none" onclick="nscPhotoTap()" alt="stop">
+    </div>
+
     <!-- Main instruction strip (Waze-style) -->
     <div class="hud-instr" id="hud-instr">
       <div class="hud-instr-icon straight" id="hud-icon">
@@ -663,6 +713,11 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
         <div class="nav-field"><label>Rec stop speed (km/h)</label>
           <input type="range" min="1" max="15" value="5" id="rng-recvel" oninput="el('val-recvel').textContent=this.value">
           <span class="val" id="val-recvel">5</span></div>
+        <div class="nav-field"><label>Simulator speed (x)</label>
+          <input type="range" min="1" max="20" value="5" id="rng-sim" oninput="el('val-sim').textContent=this.value+'x'">
+          <span class="val" id="val-sim">5x</span>
+        </div>
+        <button class="btn" id="btn-simstop" style="display:none;width:100%;margin:4px 0 10px;border-color:#a371f7;color:#a371f7" onclick="stopSim()">■ Stop simulation</button>
         <div class="nav-field"><label>Rec stop min. duration (s)</label>
           <input type="range" min="3" max="60" value="5"  id="rng-recdur" oninput="el('val-recdur').textContent=this.value+'s'">
           <span class="val" id="val-recdur">5s</span></div>
@@ -868,17 +923,67 @@ function loadSettings(){
 loadSettings();
 
 // ── Persist recordings across page reloads ───────────
+let _quotaWarned=false;
+function checkQuota(){
+  try{
+    let bytes=0;
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      bytes+=((k?.length||0)+(localStorage.getItem(k)||'').length)*2;
+    }
+    if(bytes>3.5*1024*1024&&!_quotaWarned){
+      _quotaWarned=true;
+      alert(`Storage ${(bytes/1048576).toFixed(1)} MB of ~5 MB used.\nExport All + delete old cycles, or new photos/cycles may fail to save.`);
+    }
+    return bytes;
+  }catch(e){return 0;}
+}
+
 function saveRecordings(){
   try{
     localStorage.setItem('gpx-nav-recs', JSON.stringify(
       savedRecs.filter(Boolean).map(r=>({
         name:r.name, dist:+(r.dist??0)||0,
         date:r.date instanceof Date?r.date.toISOString():r.date,
-        points:r.points.map(p=>({lat:p.lat,lng:p.lng,t:p.t})), // compact: no speed/alt
+        elev:r.elev??null, time_s:r.time_s??null, score:r.score??null,
+        // alt kept (0.1 m) — dropping it silently destroyed elevation gain on reload
+        points:r.points.map(p=>({lat:p.lat,lng:p.lng,t:p.t,
+          ...(p.alt!=null&&!isNaN(+p.alt)?{alt:Math.round(p.alt*10)/10}:{})})),
         stops:r.stops.map(s=>({lat:s.lat,lng:s.lng,t:s.t,dur_s:s.dur_s,photo:s.photo||null,events:s.events||[]}))
       }))
     ));
-  }catch(e){console.warn('Recordings not saved:',e.message);}
+    checkQuota();
+  }catch(e){
+    if(/quota/i.test(e.name||'')||/quota/i.test(e.message||'')){
+      alert('Storage FULL — this cycle was NOT saved.\nExport All, delete old cycles and try again.');
+    }else console.warn('Recordings not saved:',e.message);
+  }
+}
+
+// ════ P0.1 — Crash recovery: in-flight recording flushed every 30 s ════
+const INFLIGHT_KEY='gpx-nav-inflight';
+let _lastFlush=0;
+function flushInflight(){
+  try{localStorage.setItem(INFLIGHT_KEY,JSON.stringify({t:Date.now(),points:recPoints,stops:recStops}));}
+  catch(e){/* quota alert already covers this */}
+}
+function checkInflightRecovery(){
+  try{
+    const raw=localStorage.getItem(INFLIGHT_KEY);if(!raw)return;
+    const d=JSON.parse(raw);
+    localStorage.removeItem(INFLIGHT_KEY);
+    if(!Array.isArray(d?.points)||d.points.length<2)return;
+    const dist=calcDistRaw(d.points);
+    if(!confirm(`Unsaved recording found (${d.points.length} pts · ${dist.toFixed(2)} km · ${d.stops?.length||0} stops).\nRecover it?`))return;
+    const rec={name:'Recovered '+new Date(d.t).toLocaleString('en-GB'),
+      points:d.points,stops:d.stops||[],date:new Date(d.t),dist,
+      score:calcGTAScore(d.points,d.stops||[]),elev:calcElevGain(d.points),
+      time_s:Math.round((d.points[d.points.length-1].t-d.points[0].t)/1000)};
+    savedRecs.push(rec);renderRecCard(rec,savedRecs.length-1);
+    el('rec-badge').textContent=` (${savedRecs.filter(Boolean).length})`;
+    el('rec-empty').style.display='none';
+    saveRecordings();
+  }catch(e){console.warn('Recovery failed:',e.message);}
 }
 
 function loadStoredRecordings(){
@@ -1112,6 +1217,8 @@ function calcSpeedFromPoints(lat,lng){
 // ── MAP ────────────────────────────────────────────────
 map=L.map('map',{center:[-15,-50],zoom:5,zoomControl:false,tap:true,rotate:true,rotateControl:false,touchRotate:false,shiftKeyRotate:false});
 loadStoredRecordings();
+checkInflightRecovery();
+checkQuota();
 setTimeout(()=>{try{map.invalidateSize();}catch(e){}},600);
 // Ensure map tiles render correctly after initial layout
 setTimeout(()=>{try{map.invalidateSize();}catch(e){}},500);
@@ -1467,13 +1574,21 @@ function parseGPX(xml,filename){
 }
 
 // ── STOP CARDS ─────────────────────────────────────────
-function mkStopIcon(id,state){
+// Bigger 10"-readable pins. The NEXT pending stop pulses amber, the stop the
+// vehicle is currently at pulses green — the driver sees the target at a glance.
+function mkStopIcon(id,state,isNext){
   const colors={waiting:'#f0a500',current:'#3fb950',done:'#555'};
   const lbl=state==='done'?'✓':id;const c=colors[state]||'#f0a500';
+  const SZ=state==='done'?30:(isNext||state==='current'?46:38);
+  const cls=state==='current'?'mk-pulse-g':(isNext?'mk-pulse-a':'');
   return L.divIcon({
-    html:`<div style="background:${c};color:${state==='done'?'#aaa':'#000'};width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center"><span style="transform:rotate(45deg);font-size:12px;font-weight:700">${lbl}</span></div>`,
-    className:'',iconSize:[30,30],iconAnchor:[15,30],popupAnchor:[0,-34]
+    html:`<div class="${cls}" style="background:${c};color:${state==='done'?'#aaa':'#000'};width:${SZ}px;height:${SZ}px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center"><span style="transform:rotate(45deg);font-size:${state==='done'?12:17}px;font-weight:800">${lbl}</span></div>`,
+    className:'',iconSize:[SZ,SZ],iconAnchor:[SZ/2,SZ],popupAnchor:[0,-SZ-4]
   });
+}
+function refreshStopIcons(){
+  const next=stops.find(x=>x.state!=='done');
+  stops.forEach(x=>stopMarkers[x.id]?.setIcon(mkStopIcon(x.id,x.state,x===next&&x.state!=='current')));
 }
 function renderCard(s){
   if(el('stops-empty')) el('stops-empty').style.display='none';
@@ -1533,7 +1648,7 @@ function updCardState(s){
   const num=el(`scnum-${s.id}`);if(num)num.className=`sc-num ${s.state==='waiting'?'waiting':s.state==='current'?'current':'done'}`;
   const st=el(`scst-${s.id}`);
   if(st){st.className=`sc-badge ${s.state}`;st.textContent={waiting:'Waiting',current:'At stop',done:'Done'}[s.state]}
-  stopMarkers[s.id]?.setIcon(mkStopIcon(s.id,s.state));
+  refreshStopIcons(); // re-evaluates which stop is NEXT (pulsing highlight)
 }
 
 // ── TIMERS ─────────────────────────────────────────────
@@ -1616,6 +1731,7 @@ function startNav(){
   // starts with lastRouteIdx stuck at the end and matching never recovers.
   lastRouteIdx=0;_speedBuf=[];_headBuf=[];lastGPSForSpeed=null;
   lastVoiceKey='';lastVoiceManeuver='';destinationAnnounced=false;evtAnnounced.clear();
+  refreshStopIcons(); // NEXT-stop pulse from the first second of navigation
   el('btn-nav').style.display='none';el('btn-nav2').style.display='none';
   el('btn-stop').style.display='';el('btn-nav3').style.display='none';el('btn-stop3').style.display='';
   el('nav-hud').classList.add('on');el('hud-toggle').classList.add('on');
@@ -1635,8 +1751,10 @@ function stopNav(){
   if(window.speechSynthesis)window.speechSynthesis.cancel();
   el('hud-sp').classList.remove('on');hudPanelOpen=false;
   el('sum-bar').classList.remove('on');
+  stopSim(true); // never leave a simulation feeding a stopped navigation
   // Reset map to north-up (spec 5.3)
   setMapBearing(0);_lastBearing=0;
+  if(el('nsc'))el('nsc').style.display='none';
   shState='mid';applySheet();
   if(!isRec) releaseWakeLock();
   setGPS('wait','GPS stopped');
@@ -1707,6 +1825,7 @@ function onGPS(pos){
 
   // Arrival check (rawKmh passed in — it's local to this function)
   checkArrival(lat,lng,rawKmh);
+  updNextStopCard(lat,lng);
 
   // Recording stop detection
   if(isRec){
@@ -1780,6 +1899,7 @@ function onGPS(pos){
     }
     const recDist=calcDistRaw(recPoints);
     el('rec-stats').textContent=`${recPoints.length} pts · ${recDist.toFixed(2)} km`;
+    if(Date.now()-_lastFlush>30000){_lastFlush=Date.now();flushInflight();} // crash recovery
   }
 }
 function onGPSErr(err){
@@ -1788,6 +1908,98 @@ function onGPSErr(err){
 }
 
 // ── ROUTE REMAINING ────────────────────────────────────
+// ── GPS SIMULATOR (dev tool) ──────────────────────────
+// Replays a recorded cycle through onGPS as if it were live GPS — speed and
+// heading derived from the recorded points. Lets new app versions be tested
+// at a desk against real, physically-driven cycles, at 1x-20x speed.
+let simTimer=null,simIdx=0,simRec=null;
+
+function startSim(idx){
+  const rec=savedRecs[idx];
+  if(!rec||!rec.points||rec.points.length<2){alert('Recording has no points to simulate.');return}
+  stopSim(true);
+  simRec=rec;simIdx=0;
+  // Real GPS off while simulating — the two must never interleave
+  if(watchId!=null){try{navigator.geolocation.clearWatch(watchId)}catch(e){}watchId=null;}
+  el('btn-simstop').style.display='';
+  showAlert('arrived',`▶ SIM ${rec.name} · ${+el('rng-sim').value}x`);
+  stepSim();
+}
+
+function stepSim(){
+  if(!simRec)return;
+  const pts=simRec.points;
+  if(simIdx>=pts.length){
+    showAlert('departed','■ Simulation finished');
+    stopSim();return;
+  }
+  const p=pts[simIdx],prev=pts[simIdx-1];
+  let heading=null,speed=null;
+  if(prev){
+    const dt=(p.t-prev.t)/1000;
+    if(dt>0)speed=haversine(prev.lat,prev.lng,p.lat,p.lng)*1000/dt; // m/s
+    heading=brng(prev.lat,prev.lng,p.lat,p.lng);
+  }
+  onGPS({coords:{latitude:+p.lat,longitude:+p.lng,accuracy:5,
+    altitude:p.alt!=null?+p.alt:null,speed,heading},timestamp:p.t});
+  setGPS('ok',`SIM ${+el('rng-sim').value}x · ${simIdx+1}/${pts.length}`);
+  simIdx++;
+  const next=pts[simIdx];
+  if(next){
+    const mult=Math.max(1,+el('rng-sim').value||5);
+    const wait=Math.min(4000,Math.max(40,(next.t-p.t)/mult));
+    simTimer=setTimeout(stepSim,wait);
+  }else simTimer=setTimeout(stepSim,300);
+}
+
+function stopSim(silent){
+  clearTimeout(simTimer);simTimer=null;
+  const was=simRec;simRec=null;simIdx=0;
+  el('btn-simstop').style.display='none';
+  if(was&&!silent){
+    setGPS('wait','SIM stopped');
+    // Resume real GPS if navigation is still active
+    if(navActive&&watchId==null&&navigator.geolocation){
+      watchId=navigator.geolocation.watchPosition(onGPS,onGPSErr,
+        {enableHighAccuracy:true,maximumAge:1000,timeout:20000});
+    }
+  }
+}
+
+// ── Next Stop Card updater (called every GPS tick while navigating) ──
+function updNextStopCard(lat,lng){
+  const c=el('nsc');if(!c)return;
+  const next=navActive?stops.find(x=>x.state!=='done'):null;
+  if(!next){c.style.display='none';return}
+  // Compact glanceable time: mm:ss, hours only when >= 1h
+  const fmtC=t=>{const h=Math.floor(t/3600),m=Math.floor(t%3600/60),x=Math.floor(t%60);
+    return (h?h+':':'')+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0');};
+  c.style.display='block';
+  const done=stops.filter(x=>x.state==='done').length;
+  el('nsc-count').textContent=`${Math.min(done+1,stops.length)}/${stops.length}`;
+  if(next.state==='current'){
+    c.classList.add('atstop');
+    el('nsc-title').textContent=next.dur_s?'AT STOP · TIME LEFT':'AT STOP · ELAPSED';
+    const v=next.dur_s?Math.max(0,next.dur_s-next.elapsed):next.elapsed;
+    el('nsc-dist').textContent=fmtC(v);
+  }else{
+    c.classList.remove('atstop');
+    el('nsc-title').textContent='NEXT STOP';
+    const dM=haversine(lat,lng,next.lat,next.lng)*1000;
+    el('nsc-dist').textContent=dM>=1000?(dM/1000).toFixed(1)+' km':Math.round(dM)+' m';
+  }
+  el('nsc-plan').textContent='⏱ '+(next.dur_s?fmtC(next.dur_s):'--:--');
+  el('nsc-evt').textContent=(next.events||[]).map(e=>e==='openDoor'?'🚪':'♿').join(' ');
+  el('nsc-leg').textContent=next.seg_avg!=null?`leg Ø ${next.seg_avg} km/h`:'';
+  const ph=el('nsc-photo');
+  if(next.photo&&next.photo.length>10){if(ph.src!==next.photo)ph.src=next.photo;ph.style.display='block';}
+  else ph.style.display='none';
+}
+function nscPhotoTap(){
+  const next=stops.find(x=>x.state!=='done');
+  if(next?.photo)showStopPhoto(next,0);
+}
+
 function nearestRoutePoint(lat,lng){
   if(!routePts.length||!routeCumDist.length)return{nearIdx:0,distFromStart:0};
 
@@ -1992,6 +2204,8 @@ function startRec(){
   routePts=[];maneuvers=[];totalRouteDist=0;
 
   isRec=true;recPoints=[];recStops=[];recStopCandidate=null;
+  try{localStorage.removeItem(INFLIGHT_KEY);}catch(e){}
+  _lastFlush=Date.now();
   shState='hidden';applySheet();
   el('rec-ind').classList.add('on');
   el('btn-rec').className='btn rec-on';el('btn-rec').textContent='⏹ Recording';
@@ -2038,6 +2252,7 @@ function stopRec(){
   renderRecCard(rec,idx);
   el('rec-badge').textContent=` (${savedRecs.length})`;
   el('rec-empty').style.display='none';
+  try{localStorage.removeItem(INFLIGHT_KEY);}catch(e){} // clean shutdown
   saveRecordings(); // persist to localStorage
   // Auto-load the recording just saved: route + stops appear on the map
   // and ▶ Nav is ready — no need to hunt for the Load button.
@@ -2073,6 +2288,7 @@ function renderRecCard(rec,idx){
       <button class="btn go"      style="flex:1;font-size:11px;padding:8px 4px" onclick="loadRec(${idx})">📂 Load</button>
       <button class="btn primary" style="flex:1;font-size:11px;padding:8px 4px" onclick="dlRecGPX(${idx})">↓ GPX</button>
       <button class="btn"         style="flex:1;font-size:11px;padding:8px 4px;border-color:var(--blue);color:var(--blue)" onclick="shareRec(${idx})">📤 JSON</button>
+      <button class="btn"         style="font-size:11px;padding:8px 6px;border-color:#a371f7;color:#a371f7" title="Replay this cycle as live GPS (dev)" onclick="startSim(${idx})">▶ SIM</button>
       <button class="btn"         style="font-size:11px;padding:8px 8px;border-color:var(--red);color:var(--red)" onclick="delRec(${idx})">✕</button>
     </div>`;
   list.insertBefore(card,list.firstChild);
