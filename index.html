@@ -63,6 +63,13 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
 .sb-pbar{height:5px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden}
 .sb-pfill{height:100%;border-radius:3px;transition:width .5s,background .5s}
 
+.score-badge{display:inline-block;font-size:10px;font-weight:800;font-family:var(--mono);
+  padding:1px 6px;border-radius:8px;vertical-align:1px;margin-left:4px}
+.score-badge.m5{background:rgba(63,185,80,.18);color:#3fb950}
+.score-badge.m4{background:rgba(88,166,255,.18);color:#58a6ff}
+.score-badge.m3{background:rgba(240,165,0,.18);color:#f0a500}
+.score-badge.m0{background:rgba(248,81,73,.2);color:#f85149}
+
 /* ── MAP ── */
 .map-wrap{position:relative;flex:1;min-height:0;overflow:hidden}
 /* Map is 2x the viewport so heading-up rotation never exposes empty corners.
@@ -118,6 +125,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
 }
 .hud-spd-val{font-size:26px;font-weight:700;font-family:var(--mono);line-height:1}
 .hud-spd-unit{font-size:9px;color:var(--muted);font-family:var(--mono);letter-spacing:1px}
+.hud-tgt{font-size:10px;font-weight:700;color:var(--accent);font-family:var(--mono);margin-top:2px;white-space:nowrap}
 
 /* Instruction colors by type */
 .hud-instr-icon.stop   {background:rgba(248,81,73,.15);border-right-color:rgba(248,81,73,.3)}
@@ -250,7 +258,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
 .stop-photo-name{font-size:12px;font-weight:700;color:var(--accent);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
 .stop-photo-close{font-size:16px;cursor:pointer;color:var(--muted);padding:0 2px;flex-shrink:0}
-.stop-photo-img{width:190px;height:130px;object-fit:cover;display:block}
+.stop-photo-img{width:290px;height:195px;object-fit:cover;display:block}
 .stop-photo-none{background:rgba(13,17,23,.9);padding:14px;text-align:center;
   color:var(--muted);font-size:11px;font-family:var(--mono);height:80px;
   display:flex;align-items:center;justify-content:center}
@@ -432,7 +440,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
              padding:7px 10px;font-size:16px;cursor:pointer;min-height:38px;
              color:var(--text);transition:all .15s;user-select:none">🌙</button>
     <button class="btn go"       id="btn-nav"  onclick="startNav()" disabled>▶ Nav</button>
-    <button class="btn stop-nav" id="btn-stop" onclick="stopNav()"  style="display:none">■ Parar</button>
+    <button class="btn stop-nav" id="btn-stop" onclick="stopNav()"  style="display:none">■ Stop</button>
   </div>
 </div>
 
@@ -474,6 +482,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
       <div class="hud-instr-speed">
         <div class="hud-spd-val"  id="hud-spd">0</div>
         <div class="hud-spd-unit">km/h</div>
+        <div class="hud-tgt" id="hud-tgt" title="Recorded avg of this leg"></div>
       </div>
     </div>
 
@@ -569,7 +578,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
     <p>📲 Instalar <strong style="color:var(--accent)">GPX Navigator Pro</strong> como app?</p>
     <div class="install-btns">
       <button class="btn primary" style="flex:1" onclick="doInstall()">✓ Instalar</button>
-      <button class="btn" style="flex:1" onclick="hideInstall()">✕ Não</button>
+      <button class="btn" style="flex:1" onclick="hideInstall()">✕ No</button>
     </div>
   </div>
 
@@ -587,34 +596,34 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
     </div>
 
     <div class="sheet-tabs">
-      <div class="stab active" id="stab-rota"     onclick="switchTab('rota')">Route</div>
-      <div class="stab"        id="stab-nav"      onclick="switchTab('nav')">GPS</div>
-      <div class="stab"        id="stab-paradas"  onclick="switchTab('paradas')">Stops<span id="stops-badge" style="font-size:9px;color:var(--accent)"></span></div>
-      <div class="stab"        id="stab-gravadas" onclick="switchTab('gravadas')">Recordings<span id="rec-badge" style="font-size:9px;color:var(--red)"></span></div>
+      <div class="stab active" id="stab-rota"     onclick="switchTab('rota',true)">Route</div>
+      <div class="stab"        id="stab-nav"      onclick="switchTab('nav',true)">GPS</div>
+      <div class="stab"        id="stab-paradas"  onclick="switchTab('paradas',true)">Stops<span id="stops-badge" style="font-size:9px;color:var(--accent)"></span></div>
+      <div class="stab"        id="stab-gravadas" onclick="switchTab('gravadas',true)">Recordings<span id="rec-badge" style="font-size:9px;color:var(--red)"></span></div>
     </div>
 
     <!-- ROTA PANE -->
     <div class="pane active" id="pane-rota" style="overflow-y:auto">
       <div class="upload-zone" id="upload-zone">
-        <input type="file" accept=".gpx" onchange="loadGPX(this)">
+        <input type="file" accept=".gpx,.json" onchange="loadGPX(this)">
         <div class="icon">📂</div>
         <strong>Load GPX</strong>
-        <p>Gerado pelo conversor_mat_gpx.py</p>
+        <p>.gpx or .json · recorded cycles &amp; converter output</p>
       </div>
       <div id="route-details" style="display:none;flex-direction:column">
         <div class="route-info">
           <div class="ri-grid">
             <div class="ri-item"><div class="ril">Distance</div><div class="riv" id="ri-dist">—</div></div>
-            <div class="ri-item"><div class="ril">Pontos Track</div><div class="riv" id="ri-pts">—</div></div>
+            <div class="ri-item"><div class="ril">Track points</div><div class="riv" id="ri-pts">—</div></div>
             <div class="ri-item"><div class="ril">Stops</div><div class="riv" id="ri-wpts">—</div></div>
             <div class="ri-item"><div class="ril">Planned time</div><div class="riv" id="ri-tprog">—</div></div>
-            <div class="ri-item"><div class="ril">Curvas</div><div class="riv" id="ri-turns">—</div></div>
+            <div class="ri-item"><div class="ril">Turns</div><div class="riv" id="ri-turns">—</div></div>
             <div class="ri-item"><div class="ril">Maneuvers</div><div class="riv" id="ri-maneuvers">—</div></div>
           </div>
         </div>
         <div style="padding:0 14px 14px;display:flex;gap:8px">
-          <button class="btn" style="flex:1" onclick="el('gpx-file').click()">↺ Trocar GPX</button>
-          <button class="btn go" style="flex:1" id="btn-nav2" onclick="startNav()" disabled>▶ Navegar</button>
+          <button class="btn" style="flex:1" onclick="el('gpx-file').click()">↺ Change file</button>
+          <button class="btn go" style="flex:1" id="btn-nav2" onclick="startNav()" disabled>▶ Navigate</button>
         </div>
       </div>
       <div class="empty" id="no-route">
@@ -628,19 +637,19 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
       <div class="nav-section">
         <div class="gps-status" id="gps-status">
           <div class="gps-dot wait" id="gps-dot"></div>
-          <span id="gps-text">GPS não iniciado</span>
+          <span id="gps-text">GPS not started</span>
         </div>
-        <div class="nav-field"><label>Raio chegada (m)</label>
+        <div class="nav-field"><label>Arrival radius (m)</label>
           <input type="range" min="5" max="100" value="10" id="rng-radius" oninput="el('val-radius').textContent=this.value+'m'">
           <span class="val" id="val-radius">10m</span></div>
-        <div class="nav-field"><label>Auto-iniciar timer</label>
-          <input type="range" min="0" max="1" step="1" value="1" id="rng-auto" oninput="el('val-auto').textContent=['Não','Sim'][+this.value]">
+        <div class="nav-field"><label>Auto-start timer</label>
+          <input type="range" min="0" max="1" step="1" value="1" id="rng-auto" oninput="el('val-auto').textContent=['No','Yes'][+this.value]">
           <span class="val" id="val-auto">Sim</span></div>
-        <div class="nav-field"><label>Auto-parar timer</label>
-          <input type="range" min="0" max="1" step="1" value="1" id="rng-autostop" oninput="el('val-autostop').textContent=['Não','Sim'][+this.value]">
+        <div class="nav-field"><label>Auto-stop timer</label>
+          <input type="range" min="0" max="1" step="1" value="1" id="rng-autostop" oninput="el('val-autostop').textContent=['No','Yes'][+this.value]">
           <span class="val" id="val-autostop">Sim</span></div>
-        <div class="nav-field"><label>Seguir posição</label>
-          <input type="range" min="0" max="1" step="1" value="1" id="rng-follow" oninput="el('val-follow').textContent=['Não','Sim'][+this.value]">
+        <div class="nav-field"><label>Follow vehicle</label>
+          <input type="range" min="0" max="1" step="1" value="1" id="rng-follow" oninput="el('val-follow').textContent=['No','Yes'][+this.value]">
           <span class="val" id="val-follow">Sim</span></div>
         <div class="nav-field"><label>Zoom</label>
           <input type="range" min="14" max="19" value="17" id="rng-zoom" oninput="el('val-zoom').textContent=this.value">
@@ -648,12 +657,12 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);display:flex
         <div class="nav-field"><label>Rec stop speed (km/h)</label>
           <input type="range" min="1" max="15" value="5" id="rng-recvel" oninput="el('val-recvel').textContent=this.value">
           <span class="val" id="val-recvel">5</span></div>
-        <div class="nav-field"><label>Dur. mín. stop rec. (s)</label>
+        <div class="nav-field"><label>Rec stop min. duration (s)</label>
           <input type="range" min="3" max="60" value="5"  id="rng-recdur" oninput="el('val-recdur').textContent=this.value+'s'">
           <span class="val" id="val-recdur">5s</span></div>
         <div style="display:flex;gap:8px;padding-top:4px">
           <button class="btn go"       id="btn-nav3"  style="flex:1" onclick="startNav()">▶ Start GPS</button>
-          <button class="btn stop-nav" id="btn-stop3" style="flex:1;display:none" onclick="stopNav()">■ Parar</button>
+          <button class="btn stop-nav" id="btn-stop3" style="flex:1;display:none" onclick="stopNav()">■ Stop</button>
         </div>
       </div>
     </div>
@@ -707,6 +716,110 @@ let map, routeLayer, routeDoneLayer, routeAheadLayer, routeRemainLayer, recLayer
 let posMarker, accCircle;
 let stops=[], stopMarkers={};
 let extraMarkers=[];      // start/end dots + recording stop pins (were orphaned)
+
+// ── Cycle analytics ───────────────────────────────────
+function fmtDur(sec){
+  if(sec==null||isNaN(sec))return'—';
+  const h=Math.floor(sec/3600),m=Math.round(sec%3600/60);
+  return h?`${h}h ${String(m).padStart(2,'0')}m`:`${m} min`;
+}
+
+// Elevation gain: median-smoothed altitude + climb accumulator with 2 m
+// hysteresis. A per-sample threshold would discard gentle climbs entirely
+// (1 Hz sampling on a slow grade gives deltas far below any noise floor).
+function calcElevGain(points){
+  const src=(points||[]).filter(p=>p.alt!=null&&!isNaN(+p.alt)).map(p=>+p.alt);
+  if(src.length<10||src.length<(points.length*0.5))return null; // GPS without altitude
+  const sm=src.map((_,i)=>{
+    const w=src.slice(Math.max(0,i-2),i+3).slice().sort((a,b)=>a-b);
+    return w[Math.floor(w.length/2)];
+  });
+  let gain=0,base=sm[0];
+  for(let i=1;i<sm.length;i++){
+    if(sm[i]<base)base=sm[i];                       // track local minimum
+    else if(sm[i]-base>=2){gain+=sm[i]-base;base=sm[i];} // climbed past noise band
+  }
+  return Math.round(gain);
+}
+
+// ── GTA / VBC duty-cycle classification ──────────────
+// The GTA score = how many of the 5 VBC criteria the recorded cycle meets.
+// Classes per the VBC reference table: City (Ci1-3), Commuter (Co1-2),
+// Long Haul (LH1-2). Criteria: stops/km, overall avg speed (incl. idle),
+// drive speed (excl. idle), max speed, idle %.
+const VBC_CLASSES=[
+  {id:'Ci1',spk:[5,10],    spd:[1,15],   dspd:[0,23],  vmax:[5,50],   idle:[36,50]},
+  {id:'Ci2',spk:[2.5,5],   spd:[15,23],  dspd:[23,32], vmax:[50,60],  idle:[27,36]},
+  {id:'Ci3',spk:[1.5,2.5], spd:[23,33],  dspd:[32,42], vmax:[60,70],  idle:[17,27]},
+  {id:'Co1',spk:[1,1.5],   spd:[33,45],  dspd:[42,54], vmax:[70,90],  idle:[17,23]},
+  {id:'Co2',spk:[0.1,1],   spd:[45,55],  dspd:[54,63], vmax:[90,100], idle:[12,17]},
+  {id:'LH1',spk:[0,0],     spd:[55,65],  dspd:[63,74], vmax:[90,100], idle:[0,12]},
+  {id:'LH2',spk:[0,0],     spd:[65,120], dspd:[74,120],vmax:[100,120],idle:[0,12]},
+];
+
+function calcCycleMetrics(points,nStops){
+  let moving=0,idle=0,dist=0,prev=null;const spd=[];
+  for(const p of points||[]){
+    if(prev){
+      const dt=(p.t-prev.t)/1000;
+      if(dt<=0||dt>30){prev=p;continue}
+      const d=haversine(prev.lat,prev.lng,p.lat,p.lng);dist+=d;
+      const k=d*1000/dt*3.6;spd.push(k);
+      if(k<2)idle+=dt;else moving+=dt;   // keep-alive points preserve dwell time
+    }
+    prev=p;
+  }
+  const total=moving+idle;
+  if(total<30||dist<0.1)return null;
+  // Robust max speed: median-of-3 kills single GPS glitches
+  let vmax=0;
+  if(spd.length>=3){
+    for(let i=1;i<spd.length-1;i++){
+      const m=[spd[i-1],spd[i],spd[i+1]].sort((a,b)=>a-b)[1];
+      if(m>vmax)vmax=m;
+    }
+  }else vmax=Math.max(0,...spd);
+  return{dist:+dist.toFixed(2),time_s:Math.round(total),
+    avg:+(dist/(total/3600)).toFixed(1),
+    drive:moving>0?+(dist/(moving/3600)).toFixed(1):0,
+    vmax:Math.round(vmax),
+    idlePct:+(idle/total*100).toFixed(1),
+    stopsKm:+((nStops||0)/dist).toFixed(2)};
+}
+
+const VBC_CRIT_LABELS={spk:'stops/km',spd:'avg speed',dspd:'drive speed',vmax:'max speed',idle:'idle %'};
+function calcGTAScore(points,stopsArr){
+  const m=calcCycleMetrics(points,(stopsArr||[]).length);
+  if(!m)return{cls:'—',matched:null,total:5,metrics:null,detail:null};
+  const inR=(v,r)=>v>=r[0]&&v<=r[1];
+  let best=null;
+  for(const c of VBC_CLASSES){
+    const d={spk:inR(m.stopsKm,c.spk),spd:inR(m.avg,c.spd),
+      dspd:inR(m.drive,c.dspd),vmax:inR(m.vmax,c.vmax),idle:inR(m.idlePct,c.idle)};
+    const matched=Object.values(d).filter(Boolean).length;
+    if(!best||matched>best.matched)best={cls:c.id,matched,detail:d};
+  }
+  return{cls:best.cls,matched:best.matched,total:5,metrics:m,detail:best.detail};
+}
+
+// Per-segment average speeds between recorded stops (for replay pacing)
+function calcSegments(points,stops){
+  if(!points?.length||!stops?.length)return[];
+  const segs=[];let depT=points[0].t;
+  [...stops].sort((a,b)=>a.t-b.t).forEach((st,k)=>{
+    let d=0,prev=null;
+    for(const p of points){
+      if(p.t<depT)continue;if(p.t>st.t)break;
+      if(prev)d+=haversine(prev.lat,prev.lng,p.lat,p.lng);
+      prev=p;
+    }
+    const t=(st.t-depT)/1000;
+    segs.push({toStop:k+1,dist_km:+d.toFixed(2),time_s:Math.round(t),
+      avg_kmh:(t>3&&d>0.01)?+(d/(t/3600)).toFixed(1):null});
+    depT=st.t+(st.dur_s||0)*1000;
+  });
+  return segs;
+}
 let routePts=[];          // [{lat,lon}] full route
 let totalRouteDist=0;
 let maneuvers=[];         // computed turn-by-turn instructions
@@ -729,7 +842,7 @@ function saveSettings(){
   }catch(e){}
 }
 function refreshSettingLabels(){
-  const yn=v=>['Não','Sim'][+v]||'—';
+  const yn=v=>['No','Yes'][+v]||'—';
   if(el('val-radius'))el('val-radius').textContent=el('rng-radius').value+'m';
   if(el('val-auto'))el('val-auto').textContent=yn(el('rng-auto').value);
   if(el('val-autostop'))el('val-autostop').textContent=yn(el('rng-autostop').value);
@@ -1068,7 +1181,12 @@ function shTS(e){tsY=e.touches[0]?.clientY||0}
 function shTM(e){if(e.target.closest('.stops-list,.rec-list,.nav-section')&&shState==='expanded')return;e.preventDefault()}
 function shTE(e){const dy=(e.changedTouches[0]?.clientY||tsY)-tsY;if(Math.abs(dy)<25)return;shState=dy>0?'mid':'expanded';applySheet()}
 
-function switchTab(n){
+function switchTab(n,fromUser){
+  // Tapping the already-active tab collapses the sheet — aux panes must not
+  // block the map. Programmatic calls (fromUser undefined) never collapse.
+  if(fromUser&&el('stab-'+n).classList.contains('active')&&(shState==='mid'||shState==='expanded')){
+    shState='peek';applySheet();return;
+  }
   ['rota','nav','paradas','gravadas'].forEach(t=>{
     el('stab-'+t).classList.toggle('active',t===n);
     el('pane-'+t).classList.toggle('active',t===n);
@@ -1265,7 +1383,7 @@ function parseGPX(xml,filename){
     const timeEl=p.querySelector('time');
     if(!isNaN(lat)&&!isNaN(lon)) pts.push({lat,lon,t:timeEl?new Date(timeEl.textContent):null});
   });
-  if(pts.length<2){alert('GPX inválido ou sem pontos de track.');return}
+  if(pts.length<2){alert('Invalid GPX or no track points.');return}
 
   clearMapLayers();
   stops=[];insideStop.clear();el('stops-list').innerHTML='';
@@ -1520,6 +1638,11 @@ function onGPS(pos){
   const rawKmh=rawSpd!=null?rawSpd:0; // raw — for stop detection
   lastGPSForSpeed={lat,lng,t:Date.now()};
   el('hud-spd').textContent=spdKmh!=null?Math.round(spdKmh):'—';
+  // Pacing target: recorded avg speed of the leg towards the next pending stop
+  if(navActive&&el('hud-tgt')){
+    const _nx=stops.find(x=>x.state!=='done');
+    el('hud-tgt').textContent=_nx?.seg_avg!=null?`Ø ${_nx.seg_avg} km/h`:'';
+  }
   setGPS('active',`Prec: ${accuracy?.toFixed(0)||'?'} m`);
 
   // Compass
@@ -1645,7 +1768,7 @@ function onGPS(pos){
   }
 }
 function onGPSErr(err){
-  const m={1:'Permissão negada',2:'Posição indisponível',3:'Timeout GPS'};
+  const m={1:'Permission denied',2:'Position unavailable',3:'GPS timeout'};
   setGPS('error',m[err.code]||'Erro GPS');
 }
 
@@ -1887,8 +2010,14 @@ function stopRec(){
 
   if(recPoints.length<2){alert('Route too short to save.');return}
   const dist=calcDistRaw(recPoints);
-  const name=`Route ${new Date().toLocaleDateString('en-GB')} ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`;
-  const rec={name,points:[...recPoints],stops:[...recStops],date:new Date(),dist};
+  const defName=`Cycle ${new Date().toLocaleDateString('en-GB')} ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`;
+  let name=null;
+  try{name=prompt('Cycle name:',defName);}catch(e){}
+  name=((name??defName)+'').trim()||defName;
+  const score=calcGTAScore(recPoints,recStops);
+  const elev=calcElevGain(recPoints);
+  const time_s=Math.round((recPoints[recPoints.length-1].t-recPoints[0].t)/1000);
+  const rec={name,points:[...recPoints],stops:[...recStops],date:new Date(),dist,score,elev,time_s};
   savedRecs.push(rec);
   const idx=savedRecs.length-1;
   renderRecCard(rec,idx);
@@ -1898,7 +2027,8 @@ function stopRec(){
   // Auto-load the recording just saved: route + stops appear on the map
   // and ▶ Nav is ready — no need to hunt for the Load button.
   loadRec(idx);
-  showAlert('arrived',`✓ Recording saved & loaded · ${recStops.length} stop${recStops.length===1?'':'s'} · tap ▶ Nav`);
+  showAlert('arrived',`✓ ${name} · GTA ${score.cls}${score.matched!=null?' '+score.matched+'/5':''}${elev!=null?' · +'+elev+' m':''} · tap ▶ Nav`);
+  if(score.matched!=null)speakText(`Cycle saved. Class ${score.cls}, ${score.matched} of 5 criteria.`,true);
 }
 
 function renderRecCard(rec,idx){
@@ -1906,13 +2036,22 @@ function renderRecCard(rec,idx){
   const list=el('rec-list');
   const card=document.createElement('div');
   card.className='rec-card';card.id=`rcard-${idx}`;
-  const stopsInfo=rec.stops.length?`· ${rec.stops.length} stop${rec.stops.length>1?'s':''} detected`:' · no stops detected';
+  // Lazy analytics for cycles recorded before these fields existed (memoised in-RAM)
+  let sc=rec.score;
+  if(!sc||sc.cls===undefined)sc=rec.score=calcGTAScore(rec.points||[],rec.stops||[]);
+  if(rec.elev===undefined)rec.elev=calcElevGain(rec.points||[]);
+  const dur=rec.time_s??(rec.points?.length>1?Math.round((rec.points[rec.points.length-1].t-rec.points[0].t)/1000):null);
+  const dt=rec.date instanceof Date?rec.date:new Date(rec.date);
+  const tip=sc?.detail?Object.entries(sc.detail).map(([k,ok])=>`${VBC_CRIT_LABELS[k]} ${ok?'✓':'✗'}`).join(' · '):'';
+  const bcls=sc?.matched==null?'':sc.matched>=5?'m5':sc.matched===4?'m4':sc.matched===3?'m3':'m0';
+  const badge=sc?.matched!=null?`<span class="score-badge ${bcls}" title="${tip}">${sc.cls} ${sc.matched}/5</span>`:'';
   card.innerHTML=`
     <div class="rec-card-head">
       <span style="font-size:20px">🛤️</span>
-      <div>
-        <div class="rec-card-name">${rec.name}</div>
-        <div class="rec-card-meta">${(rec.dist??0).toFixed(2)} km · ${(rec.points??[]).length} pts ${stopsInfo}</div>
+      <div style="flex:1;min-width:0">
+        <div class="rec-card-name">${rec.name} ${badge}</div>
+        <div class="rec-card-meta">${(rec.dist??0).toFixed(2)} km · ${fmtDur(dur)} · ${rec.stops.length} stop${rec.stops.length===1?'':'s'}${rec.elev!=null?' · ⛰ +'+rec.elev+' m':''}</div>
+        <div class="rec-card-meta">${sc?.metrics?`Ø ${sc.metrics.avg} · drv ${sc.metrics.drive} · max ${sc.metrics.vmax} km/h · ${sc.metrics.stopsKm} st/km · idle ${sc.metrics.idlePct}%`:''} ${isNaN(dt)?'':'· '+dt.toLocaleDateString('en-GB')}</div>
       </div>
     </div>
     <div class="rec-card-btns">
@@ -1951,6 +2090,7 @@ function loadRec(idx){
     // ── Stops ─────────────────────────────────────────
     stops=[];insideStop.clear();stopMarkers={};
     destinationAnnounced=false;evtAnnounced.clear();departGate=null;
+    const segs=calcSegments(rec.points,rec.stops); // recorded pacing per leg
     const sl=el('stops-list');if(sl)sl.innerHTML='';
 
     (rec.stops||[]).forEach((s,i)=>{
@@ -1970,7 +2110,8 @@ function loadRec(idx){
       const m=L.marker([+s.lat,+s.lng],{icon,zIndexOffset:900}).addTo(map);
       const navStop={id,name:`Stop ${id}`,lat:+s.lat,lng:+s.lng,
         dur_s:s.dur_s||0,elapsed:0,running:false,intervalId:null,state:'waiting',
-        photo:s.photo||null,events:s.events||[]};
+        photo:s.photo||null,events:s.events||[],
+        seg_avg:segs[i]?.avg_kmh??null,seg_dist:segs[i]?.dist_km??null};
       stops.push(navStop);
       stopMarkers[id]=m;
       if(sl) renderCard(navStop);
@@ -2045,7 +2186,8 @@ function dlRecGPX(idx){
 function recToPlain(r){
   return{name:r.name, dist:+(r.dist??0)||0,
     date:r.date instanceof Date?r.date.toISOString():r.date,
-    points:r.points, stops:r.stops};
+    points:r.points, stops:r.stops,
+    elev:r.elev??null, time_s:r.time_s??null, score:r.score??null};
 }
 
 // Share ONE recording as .json — uses Android share sheet (WhatsApp/Drive/
@@ -2085,7 +2227,8 @@ function importRecsJSON(input){
       // Normalisers — tolerant to script-generated files:
       // lat/lon or lat/lng; t as ISO string or epoch ms; dist optional.
       const nT=t=>typeof t==='string'?(Date.parse(t)||Date.now()):(+t||Date.now());
-      const nPt=p=>({lat:+p.lat,lng:+(p.lng??p.lon),t:nT(p.t)});
+      const nPt=p=>({lat:+p.lat,lng:+(p.lng??p.lon),t:nT(p.t),
+        alt:(p.alt??p.ele)!=null?+(p.alt??p.ele):null});
       const nSt=s=>({lat:+s.lat,lng:+(s.lng??s.lon),t:nT(s.t),
         dur_s:+(s.dur_s??s.duracao_s??0)||0,
         photo:s.photo||null,events:Array.isArray(s.events)?s.events:[]});
@@ -2099,7 +2242,8 @@ function importRecsJSON(input){
           name:r.name||'Imported route',
           dist:+(r.dist??0)||calcDistRaw(points),
           date:new Date(r.date||Date.now()),
-          points,stops
+          points,stops,
+          elev:r.elev??undefined,time_s:r.time_s??undefined,score:r.score??undefined
         };
         savedRecs.push(rec);renderRecCard(rec,savedRecs.length-1);n++;
       });
